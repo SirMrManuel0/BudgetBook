@@ -1,0 +1,7 @@
+{
+    "user": {
+        "salt": "",
+        "nonce": "",
+        "pw": "hash"
+    }
+}
