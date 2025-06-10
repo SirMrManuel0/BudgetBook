@@ -1,5 +1,6 @@
-from errors import BaseError
+from budget_book.errors.errors import BaseError, PathError
 
 __all__ = [
-    "BaseError"
+    "BaseError",
+    "PathError"
 ]

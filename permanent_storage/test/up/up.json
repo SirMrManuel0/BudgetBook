@@ -1,9 +1,0 @@
-{
-    "username": {
-        "salt": "salty",
-        "nonce": "",
-        "tag": "",
-        "pw": "hash",
-        "reference": ""
-    }
-}

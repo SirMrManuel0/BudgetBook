@@ -1,5 +1,8 @@
+import hashlib
+
 import pytest
-from budget_book.logic.databank.encryptor import Encryptor, Converter
+from budget_book.logic.databank.encryptor import Encryptor, Converter, HashingAlgorithm
+
 
 @pytest.mark.parametrize(
     "inputs,expected,custom_check",
@@ -62,7 +65,7 @@ def test_generate_username_key(username, salt_, expected):
 def test_encrypt_username(username, salt_, nonce_, expected):
     salt_ = Converter.b64_to_byte(salt_)
     nonce_ = Converter.b64_to_byte(nonce_)
-    en_username, nonce, tag = Encryptor(True).encrypt_username(username, salt=salt_, nonce=nonce_)
+    en_username, nonce, *_ = Encryptor(True).encrypt_username(username, salt=salt_, nonce=nonce_)
     assert Converter.byte_to_b64(en_username) == expected
     assert nonce == nonce_
 
@@ -110,6 +113,13 @@ def test_encrypt_system_data(data, nonce, expected):
 def test_decrypt_system_data(en_data, expected):
     plain = Encryptor(True).decrypt_system_data(Converter.b64_to_byte(en_data))
     assert plain == expected
+
+def test_validate_hash():
+    message = b"my pants are on fire"
+    hash_ = hashlib.sha512()
+    hash_.update(message)
+    hash_ = hash_.digest()
+    assert Encryptor.validate_hash(message, hash_, HashingAlgorithm.sha512)
 
 # ------------------- Converter ----------------------------------------------------------------------------------------
 # UTF <-> B64

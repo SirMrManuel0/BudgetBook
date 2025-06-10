@@ -7,7 +7,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from argon2 import PasswordHasher
 from argon2.low_level import hash_secret, Type
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Union
+
 
 class Converter:
     @classmethod
@@ -65,6 +66,19 @@ class Converter:
     def byte_to_b64(cls, byte_data: bytes) -> str:
         """Convert bytes to a Base64 string."""
         return base64.b64encode(byte_data).decode('ascii')
+
+class HashingAlgorithm:
+    @classmethod
+    def sha256(cls, data: bytes, _) -> bytes:
+        hash_ = hashlib.sha256()
+        hash_.update(data)
+        return hash_.digest()
+
+    @classmethod
+    def sha512(cls, data: bytes, _) -> bytes:
+        hash_ = hashlib.sha512()
+        hash_.update(data)
+        return hash_.digest()
 
 class Encryptor:
     def __init__(self, test=False):
@@ -152,7 +166,7 @@ class Encryptor:
         user_key = hashed[5]
         return Converter.b64_to_byte(user_key), Converter.b64_to_byte(salt_)
 
-    def encrypt_username(self, de_username: bytes, salt: bytes, nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
+    def encrypt_username(self, de_username: bytes, salt: Optional[bytes] = None, nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes, bytes]:
         """
 
         :param salt: as bytes
@@ -160,7 +174,7 @@ class Encryptor:
         :param nonce: as bytes
         :return: bytes
         """
-        key_, _ = self.generate_username_key(username=de_username, salt=salt)
+        key_, salt_ = self.generate_username_key(username=de_username, salt=salt)
         en_username = ""
         nonce_ = nonce
         tag = None
@@ -175,7 +189,7 @@ class Encryptor:
             encryptor = cipher.encryptor()
             en_username = encryptor.update(de_username) + encryptor.finalize()
             tag = encryptor.tag
-        return en_username, nonce_, tag
+        return en_username, nonce_, tag, salt_
 
     @classmethod
     def decrypt_username(cls, en_username: bytes, nonce: bytes, tag: bytes, user_key: bytes) -> bytes:
@@ -205,6 +219,19 @@ class Encryptor:
         aes_gcm = AESGCM(hashed_key)
         plaintext = aes_gcm.decrypt(nonce_, data_and_tag, associated_data=None)
         return plaintext
+
+    @classmethod
+    def validate_hash(cls, data: bytes, hash_: Union[bytes, str], hashing_algo) -> bool:
+        """
+
+        :param data:
+        :param hash_:
+        :param hashing_algo: from HashingAlgorithm
+        :return:
+        """
+
+        hashed = hashing_algo(data, hash_)
+        return hashed == hash_
 
     @classmethod
     def hash_pw(cls, pw: bytes) -> str:
