@@ -1,7 +1,9 @@
 {
-    "user": {
+    "username": {
         "salt": "",
         "nonce": "",
-        "pw": "hash"
+        "tag": "",
+        "pw": "hash",
+        "reference": ""
     }
 }

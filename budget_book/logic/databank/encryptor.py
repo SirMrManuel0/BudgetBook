@@ -1,9 +1,10 @@
 import secrets
 import base64
 import keyring
+import hashlib
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from pylix.errors import TODO
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from argon2 import PasswordHasher
 from argon2.low_level import hash_secret, Type
 from typing import Iterable, Optional
@@ -58,7 +59,7 @@ class Converter:
     @classmethod
     def b64_to_byte(cls, b64: str) -> bytes:
         """Convert a Base64 string to bytes."""
-        return base64.b64decode(b64)
+        return base64.b64decode(b64 + "===")
 
     @classmethod
     def byte_to_b64(cls, byte_data: bytes) -> str:
@@ -69,48 +70,60 @@ class Encryptor:
     def __init__(self, test=False):
         self._test = test
 
-    def _get_system_key(self) -> str:
+    def _get_system_key(self) -> bytes:
         if not self._test:
-            return keyring.get_password("BudgetBook", "system_key")
+            return Converter.b64_to_byte(keyring.get_password("BudgetBook", "system_key"))
         else:
             # test key
-            return "f291edbb67f5bdb73814452098436b30f8615ee01b1e086d4f747748b672355ef33481c6b4ac812f837128085ef667f00b"\
-                   "ae190c1be2b8506a2a5590a743d0ff4760d8216b4b8c0f1252fd8ad1e1332f6557874c36872b410e29a764458c12b8bd0c"\
-                   "fe10ddc99db05b539eb4fd31880cd9704899d6a5bd69a6a3413f188f43c4d374c8c042c163074a45f987acdd69bea59bea"\
-                   "be942468f5a5d0fcdfbbff9d4fef1a60f51247e9212da9c9b5232caa38f06e386f318e10d4b94016aa3270ad18dd685401"\
-                   "00819bd8a0ba8e176aa601109678a4969159f767ae04d24cbd404e7b1b87721831a5af291ae257e7419200b602d9348399"\
-                   "623e0c5380590739f83c28"
+            return Converter.hex_to_byte("f291edbb67f5bdb73814452098436b30f8615ee01b1e086d4f747748b672355ef33481c6b4a"
+                                         "c812f837128085ef667f00bae190c1be2b8506a2a5590a743d0ff4760d8216b4b8c0f1252fd"
+                                         "8ad1e1332f6557874c36872b410e29a764458c12b8bd0cfe10ddc99db05b539eb4fd31880cd"
+                                         "9704899d6a5bd69a6a3413f188f43c4d374c8c042c163074a45f987acdd69bea59beabe9424"
+                                         "68f5a5d0fcdfbbff9d4fef1a60f51247e9212da9c9b5232caa38f06e386f318e10d4b94016a"
+                                         "a3270ad18dd68540100819bd8a0ba8e176aa601109678a4969159f767ae04d24cbd404e7b1b8"
+                                         "7721831a5af291ae257e7419200b602d9348399623e0c5380590739f83c28")
 
-    def _ascii_addition(self, *args: Iterable[str]) -> str:
-        # set the longest argument to be final_
-        final_ = list()
-        max_ = -1
-        for arg in args:
-            a = max_
-            max_ = max(max_, len(arg))
-            if a != max_:
-                final_ = [*arg]
+    @classmethod
+    def _ascii_addition_bytes(cls, *args: bytes) -> bytes:
+        # Convert all to bytearrays for mutability
+        byte_args = [bytearray(arg) for arg in args]
 
-        final_ = [ord(char) for char in final_]
+        # Find the longest one
+        longest = max(byte_args, key=len)
+        result = bytearray(longest)  # make a copy to modify
 
-        # addition
-        for arg in args:
-            for start in range(0, len(final_), len(arg) * 3):
-                if start + len(arg) >= len(final_): break
-                for i, char in enumerate(arg[start:]):
-                    i += start
-                    final_[i] += ord(char)
-                    final_[i] = final_[i] % 128
-        final_ = [chr(c) for c in final_]
-        return "".join(final_)
+        for arg in byte_args:
+            if arg is longest:
+                continue  # skip the base
 
-    @TODO
-    def _generate_username_key(self, username: str, salt: Optional[str] = None) -> tuple[str, str]:
+            arg_len = len(arg)
+            if arg_len == 0:
+                continue
+
+            n = 0
+            while True:
+                # Calculate start index according to your rule:
+                # offset = (len(arg) - 1) + (n-1)*len(arg) + (n-2)*len(arg)
+                offset = (arg_len - 1) + n * arg_len + (n - 1) * arg_len if n > 0 else 0
+                if offset >= len(result):
+                    break
+
+                for i, b in enumerate(arg):
+                    idx = offset + i
+                    if idx >= len(result):
+                        break
+                    result[idx] = (result[idx] + b) % 256
+
+                n += 1
+
+        return bytes(result)
+
+    def generate_username_key(self, username: bytes, salt: Optional[bytes] = None) -> tuple[bytes, bytes]:
         """
 
-        :param username: as b64
-        :param salt:  as b64
-        :return: b64
+        :param username: as bytse
+        :param salt:  as bytes
+        :return: bytes
         """
         system_key = self._get_system_key()
         salt_ = ""
@@ -123,8 +136,8 @@ class Encryptor:
         if salt is not None:
             salt_ = salt
             hashed = hash_secret(
-                secret=self._ascii_addition(username, system_key).encode(),
-                salt=salt_.encode(),
+                secret=self._ascii_addition_bytes(username, system_key),
+                salt=salt_,
                 time_cost=time_cost,
                 memory_cost=memory_cost,
                 parallelism=parallelism,
@@ -133,49 +146,72 @@ class Encryptor:
             ).decode().split("$")
         else:
             ph = PasswordHasher(time_cost=time_cost, memory_cost=memory_cost, parallelism=parallelism, hash_len=hash_len)
-            hashed = ph.hash(self._ascii_addition(username, system_key)).split("$")
+            hashed = ph.hash(self._ascii_addition_bytes(username, system_key)).split("$")
 
         salt_ = hashed[4]
         user_key = hashed[5]
-        return user_key, salt_
+        return Converter.b64_to_byte(user_key), Converter.b64_to_byte(salt_)
 
-    @TODO
-    def encrypt_username(self, de_username: str, nonce: Optional[str] = None) -> tuple[str, str, str]:
+    def encrypt_username(self, de_username: bytes, salt: bytes, nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
         """
 
-        :param de_username: as b64
-        :param nonce: as b64
-        :return: b64
+        :param salt: as bytes
+        :param de_username: as bytes
+        :param nonce: as bytes
+        :return: bytes
         """
-        key_, _ = self._generate_username_key(username=de_username)
+        key_, _ = self.generate_username_key(username=de_username, salt=salt)
         en_username = ""
         nonce_ = nonce
         tag = None
         if nonce_ is not None:
-            cipher = Cipher(algorithms.AES(Converter.b64_to_byte(key_)), modes.GCM(Converter.b64_to_byte(nonce_)))
+            cipher = Cipher(algorithms.AES(key_), modes.GCM(nonce_))
             encryptor = cipher.encryptor()
-            en_username = encryptor.update(Converter.b64_to_byte(de_username)) + encryptor.finalize()
-            en_username = Converter.byte_to_b64(en_username)
-            tag = Converter.byte_to_b64(encryptor.tag)
+            en_username = encryptor.update(de_username) + encryptor.finalize()
+            tag = encryptor.tag
         else:
             nonce_ = secrets.token_bytes(32)
-            cipher = Cipher(algorithms.AES(Converter.b64_to_byte(key_)), modes.GCM(nonce_))
+            cipher = Cipher(algorithms.AES(key_), modes.GCM(nonce_))
             encryptor = cipher.encryptor()
-            en_username = encryptor.update(Converter.b64_to_byte(de_username)) + encryptor.finalize()
-            en_username = Converter.byte_to_b64(en_username)
-            nonce_ = Converter.byte_to_b64(nonce_)
-            tag = Converter.byte_to_b64(encryptor.tag)
+            en_username = encryptor.update(de_username) + encryptor.finalize()
+            tag = encryptor.tag
         return en_username, nonce_, tag
 
-    @TODO
-    def decrypt_username(self, en_username: str, nonce: str) -> str:
-        ...
+    @classmethod
+    def decrypt_username(cls, en_username: bytes, nonce: bytes, tag: bytes, user_key: bytes) -> bytes:
+        aes_gcm = AESGCM(user_key)
+        plaintext = aes_gcm.decrypt(nonce, en_username + tag, associated_data=None)
+        return plaintext
 
-    def hash_pw(self, pw: str) -> str:
+    def encrypt_system_data(self, data: bytes, nonce_len: int = 32, nonce: Optional[bytes] = None) -> bytes:
+        key_ = self._get_system_key()
+        hashed_key = hashlib.sha256()
+        hashed_key.update(key_)
+        hashed_key = hashed_key.digest()
+        nonce_ = secrets.token_bytes(nonce_len) if nonce is None else nonce
+        cipher = Cipher(algorithms.AES(hashed_key), modes.GCM(nonce_))
+        encryptor = cipher.encryptor()
+        en_data = encryptor.update(data) + encryptor.finalize()
+        tag = encryptor.tag
+        return nonce_ + en_data + tag
+
+    def decrypt_system_data(self, en_data: bytes, nonce_len: int = 32):
+        nonce_ = en_data[:nonce_len]
+        data_and_tag = en_data[nonce_len:]
+        key_ = self._get_system_key()
+        hashed_key = hashlib.sha256()
+        hashed_key.update(key_)
+        hashed_key = hashed_key.digest()
+        aes_gcm = AESGCM(hashed_key)
+        plaintext = aes_gcm.decrypt(nonce_, data_and_tag, associated_data=None)
+        return plaintext
+
+    @classmethod
+    def hash_pw(cls, pw: bytes) -> str:
         """
 
         :param pw: as b64
         :return: as b64
         """
         ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=3, hash_len=64)
-        return ph.hash(Converter.b64_to_byte(pw))
+        return ph.hash(pw)
