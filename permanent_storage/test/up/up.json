@@ -1,6 +1,6 @@
 {
     "username": {
-        "salt": "",
+        "salt": "salty",
         "nonce": "",
         "tag": "",
         "pw": "hash",
