@@ -1,0 +1,11 @@
+{
+    "username": {
+        "salt_username": "salty",
+        "nonce_username": "",
+        "tag_username": "",
+        "pw": "hash",
+        "reference": "",
+        "id": "",
+        "validation": "sha256"
+    }
+}

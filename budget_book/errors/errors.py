@@ -1,3 +1,16 @@
 class BaseError(Exception):
     def __init__(self, msg=""):
         super().__init__(msg)
+
+class PathError(BaseError):
+    def __init__(self, msg="", path=""):
+        self.path = path
+        if msg == "":
+            msg = f"The path '{path}' is not valid!"
+        super().__init__(msg)
+
+class CorruptionError(BaseError):
+    def __init__(self, msg=""):
+        if msg == "":
+            msg = "The data was corrupted. Please load a backup."
+        super().__init__(msg)
