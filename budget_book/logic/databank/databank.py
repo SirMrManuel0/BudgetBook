@@ -78,7 +78,6 @@ class Databank:
         else:
             return dict()
 
-    @to_test
     def validate_user(self, username_utf: str, password: bytearray) -> bool:
         users: dict = self.get_all_users()
         username_bytes: bytes = username_utf.encode()
@@ -105,7 +104,7 @@ class Databank:
 
         is_user: bool = False
 
-        for k, v in users:
+        for k, v in users.items():
             is_user = is_user or test_user(k, v)
 
         return is_user
