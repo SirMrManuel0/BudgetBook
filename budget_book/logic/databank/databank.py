@@ -61,13 +61,11 @@ class Databank:
         en_content = self._encryptor.encrypt_system_data(de_content.encode())
         self._file_manager_ps.write(file_path="up/up.hb", data=en_content+hash_)
 
-    @to_test
     def get_all_users(self) -> dict:
         en_content, hash_ = self._file_manager_ps.read(file_path="up/up.hb", validator_len=64)
         content_dict = dict()
         if not (len(en_content) == 0 and len(hash_) == 0):
             de_content = self._encryptor.decrypt_system_data(Converter.b64_to_byte(en_content))
-            print(de_content.decode())
             if not self._encryptor.validate_hash(de_content, Converter.b64_to_byte(hash_), HashingAlgorithm.sha512):
                 raise CorruptionError()
 
