@@ -5,7 +5,7 @@ import hashlib
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from argon2 import PasswordHasher
+from argon2 import PasswordHasher, exceptions
 from argon2.low_level import hash_secret, Type
 from typing import Iterable, Optional, Union
 
@@ -79,6 +79,15 @@ class HashingAlgorithm:
         hash_ = hashlib.sha512()
         hash_.update(data)
         return hash_.digest()
+
+    @classmethod
+    def argon2id(cls, data: bytes, hash_: str) -> bool:
+        ph = PasswordHasher()
+        try:
+            ph.verify(hash_, data)
+            return True
+        except exceptions.VerifyMismatchError:
+            return False
 
 class Encryptor:
     def __init__(self, test=False):
@@ -230,8 +239,11 @@ class Encryptor:
         :return:
         """
 
-        hashed = hashing_algo(data, hash_)
-        return hashed == hash_
+        ret: Union[bytes, bool] = hashing_algo(data, hash_)
+        if isinstance(ret, bytes):
+            return ret == hash_
+        else:
+            return ret
 
     @classmethod
     def hash_pw(cls, pw: bytes) -> str:

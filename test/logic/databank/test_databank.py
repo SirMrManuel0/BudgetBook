@@ -18,8 +18,8 @@ def test_add_user():
     en_content, hash_ = f_manager.read(validator_len=64)
     de_content = Encryptor(True).decrypt_system_data(Converter.b64_to_byte(en_content))
     content_dict: dict = json.loads(de_content)
-    for k,v in content_dict.items():
-        ukey, _ = Encryptor(True).generate_username_key(
+    for k, v in content_dict.items():
+        u_key, _ = Encryptor(True).generate_username_key(
             u_name.encode(),
             Converter.b64_to_byte(v["salt_username"])
         )
@@ -27,7 +27,7 @@ def test_add_user():
             Converter.b64_to_byte(k),
             Converter.b64_to_byte(v["nonce_username"]),
             Converter.b64_to_byte(v["tag_username"]),
-            ukey
+            u_key
         )
         assert de_username == u_name.encode()
 
