@@ -6,7 +6,7 @@ import uuid
 from cryptography.exceptions import InvalidTag
 from pylix.errors import TODO, to_test
 
-from budget_book.errors.errors import CorruptionError
+from budget_book.errors.errors import CorruptionError, DatabankError
 from budget_book.logic.databank import Encryptor
 from budget_book.logic.databank.encryptor import Converter, HashingAlgorithm
 from budget_book.logic.databank.file_manager import FileManager
@@ -82,29 +82,62 @@ class Databank:
         users: dict = self.get_all_users()
         username_bytes: bytes = username_utf.encode()
 
-        def test_user(name: str, user: dict) -> bool:
-            name: bytes = Converter.b64_to_byte(name)
-            u_key, _ = self._encryptor.generate_username_key(username_bytes, Converter.b64_to_byte(user["salt_username"]))
-            try:
-                de_username = self._encryptor.decrypt_username(
-                    name,
-                    Converter.b64_to_byte(user["nonce_username"]),
-                    Converter.b64_to_byte(user["tag_username"]),
-                    u_key
-                )
-            except InvalidTag as e:
-                return False
-
-            has_same_username: bool = de_username == username_bytes
-
-            pw_hash: str = Converter.b64_to_utf(user["pw"])
-            has_same_pw: bool = self._encryptor.validate_hash(bytes(password), pw_hash, HashingAlgorithm.argon2id)
-
-            return has_same_pw and has_same_username
-
         is_user: bool = False
 
         for k, v in users.items():
-            is_user = is_user or test_user(k, v)
+            is_user = is_user or self.test_user(k, v, username_utf.encode(), password)
 
         return is_user
+
+    def test_user(self, name_candidate: str, user_candidate: dict, username_bytes: bytes, password: bytearray) -> bool:
+        name_candidate: bytes = Converter.b64_to_byte(name_candidate)
+        u_key, _ = self._encryptor.generate_username_key(username_bytes, Converter.b64_to_byte(user_candidate["salt_username"]))
+        try:
+            de_username = self._encryptor.decrypt_username(
+                name_candidate,
+                Converter.b64_to_byte(user_candidate["nonce_username"]),
+                Converter.b64_to_byte(user_candidate["tag_username"]),
+                u_key
+            )
+        except InvalidTag as e:
+            return False
+
+        has_same_username: bool = de_username == username_bytes
+
+        pw_hash: str = Converter.b64_to_utf(user_candidate["pw"])
+        has_same_pw: bool = self._encryptor.validate_hash(bytes(password), pw_hash, HashingAlgorithm.argon2id)
+
+        return has_same_pw and has_same_username
+
+    @to_test
+    def get_user(self, username_utf: str, password: bytearray) -> dict:
+        """
+        Returns:
+        {
+            "salt_username": "b64",
+            "nonce_username": "b64",
+            "tag_username": "b64",
+            "pw": "hash argon2id as str",
+            "reference": "str",
+            "id": "b64",
+            "validation": "sha256 b64"
+        }
+        :param username_utf:
+        :param password:
+        :return:
+        """
+        if not self.validate_user(username_utf, password):
+            raise DatabankError(f"This User '{username_utf}' does not exist.")
+
+        username_bytes: bytes = username_utf.encode()
+        users: dict = self.get_all_users()
+
+        for username, data in users.items():
+            if not self.test_user(username, data, username_bytes, password):
+                continue
+
+            data["pw"] = Converter.b64_to_utf(data["pw"])
+            data["reference"] = Converter.b64_to_utf(data["reference"])
+
+            return data
+        raise DatabankError(f"This User '{username_utf}' does not exist.")
