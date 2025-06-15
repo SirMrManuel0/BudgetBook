@@ -28,8 +28,13 @@ class Databank:
 
         en_username, nonce_, tag, salt_ = self._encryptor.encrypt_username(username_utf.encode())
         hashed_pw = self._encryptor.hash_pw(bytes(password))
-        id_ = uuid.uuid4()
-        id_ = id_.bytes
+        id_max = -1
+        if len(content_dict) > 0:
+            for user_id, _ in content_dict.items():
+                user_id = Converter.b64_to_int(user_id, False)
+                id_max = max(user_id, id_max)
+        id_: int = id_max + 1
+        id_: bytes = Converter.int_to_bytes(id_, False, 4)
 
         if reference == "":
             reference = os.path.join(self._permanent_storage, "user_data/", Converter.byte_to_b64(id_))
@@ -44,13 +49,13 @@ class Databank:
         valid_.update(reference.encode())
         valid_.update(id_)
         valid_ = valid_.digest()
-        content_dict[Converter.byte_to_b64(en_username)] = {
+        content_dict[Converter.byte_to_b64(id_)] = {
+            "username": Converter.byte_to_b64(en_username),
             "salt_username": Converter.byte_to_b64(salt_),
             "nonce_username": Converter.byte_to_b64(nonce_),
             "tag_username": Converter.byte_to_b64(tag),
             "pw": Converter.utf_to_b64(hashed_pw),
             "reference": Converter.utf_to_b64(reference),
-            "id": Converter.byte_to_b64(id_),
             "validation": Converter.byte_to_b64(valid_)
         }
 
@@ -85,12 +90,12 @@ class Databank:
         is_user: bool = False
 
         for k, v in users.items():
-            is_user = is_user or self.test_user(k, v, username_utf.encode(), password)
+            is_user = is_user or self.test_user(v, username_utf.encode(), password)
 
         return is_user
 
-    def test_user(self, name_candidate: str, user_candidate: dict, username_bytes: bytes, password: bytearray) -> bool:
-        name_candidate: bytes = Converter.b64_to_byte(name_candidate)
+    def test_user(self, user_candidate: dict, username_bytes: bytes, password: bytearray) -> bool:
+        name_candidate: bytes = Converter.b64_to_byte(user_candidate["username"])
         u_key, _ = self._encryptor.generate_username_key(username_bytes, Converter.b64_to_byte(user_candidate["salt_username"]))
         try:
             de_username = self._encryptor.decrypt_username(
@@ -110,16 +115,17 @@ class Databank:
         return has_same_pw and has_same_username
 
     @to_test
-    def get_user(self, username_utf: str, password: bytearray) -> dict:
+    def get_user(self, username_utf: str, password: bytearray) -> tuple[str, dict]:
         """
         Returns:
+        "id as b64",
         {
+            "username": "b64",
             "salt_username": "b64",
             "nonce_username": "b64",
             "tag_username": "b64",
             "pw": "hash argon2id as str",
             "reference": "str",
-            "id": "b64",
             "validation": "sha256 b64"
         }
         :param username_utf:
@@ -132,8 +138,8 @@ class Databank:
         username_bytes: bytes = username_utf.encode()
         users: dict = self.get_all_users()
 
-        for username, data in users.items():
-            if not self.test_user(username, data, username_bytes, password):
+        for _, data in users.items():
+            if not self.test_user(data, username_bytes, password):
                 continue
 
             data["pw"] = Converter.b64_to_utf(data["pw"])

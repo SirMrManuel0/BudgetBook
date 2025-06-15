@@ -53,8 +53,8 @@ def test_get_all_user():
 
     all_users = databank.get_all_users()
 
-    for index, (username, data) in enumerate(all_users.items()):
-        reference = os.path.join(users_to_add[index][2], f"BB_u_data_{data['id']}")
+    for index, (id_, data) in enumerate(all_users.items()):
+        reference = os.path.join(users_to_add[index][2], f"BB_u_data_{id_}")
         assert Converter.b64_to_utf(data["reference"]) == reference
         assert Encryptor(True).validate_hash(
             bytes(users_to_add[index][1]),
