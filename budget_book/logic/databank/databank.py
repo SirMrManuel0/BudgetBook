@@ -114,7 +114,6 @@ class Databank:
 
         return has_same_pw and has_same_username
 
-    @to_test
     def get_user(self, username_utf: str, password: bytearray) -> tuple[str, dict]:
         """
         Returns:
@@ -124,8 +123,8 @@ class Databank:
             "salt_username": "b64",
             "nonce_username": "b64",
             "tag_username": "b64",
-            "pw": "hash argon2id as str",
-            "reference": "str",
+            "pw": "hash argon2id as utf8",
+            "reference": "utf8",
             "validation": "sha256 b64"
         }
         :param username_utf:
@@ -138,12 +137,12 @@ class Databank:
         username_bytes: bytes = username_utf.encode()
         users: dict = self.get_all_users()
 
-        for _, data in users.items():
+        for id_, data in users.items():
             if not self.test_user(data, username_bytes, password):
                 continue
 
             data["pw"] = Converter.b64_to_utf(data["pw"])
             data["reference"] = Converter.b64_to_utf(data["reference"])
 
-            return data
+            return id_, data
         raise DatabankError(f"This User '{username_utf}' does not exist.")

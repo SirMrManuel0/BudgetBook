@@ -86,3 +86,31 @@ def test_validate_user():
 
     with open("permanent_storage/test/up/up.hb", "wb") as f:
         f.write(byt)
+
+def test_get_user():
+    with open("permanent_storage/test/up/up.hb", "rb") as f:
+        byt = f.read()
+    with open("permanent_storage/test/up/up.hb", "wb") as f:
+        f.write(b"")
+
+    databank: Databank = Databank(True)
+    users_to_add: list[tuple[str, bytearray, str]] = [
+        ("Thomas Erdbeere", bytearray(b"SuperSicher"), "permanent_storage"),
+        ("Valerie Dino", bytearray(b"SichererGehtEs Nicht <3"), "permanent_storage"),
+        ("Michael Steiner", bytearray(b"Dinosauriar"), "permanent_storage")
+    ]
+    for username, pw, reference in users_to_add:
+        databank.add_user(username, pw, reference)
+
+    for name, pw, reference in users_to_add:
+        id_, data = databank.get_user(name, pw)
+        reference = os.path.join(reference, f"BB_u_data_{id_}")
+        assert data["reference"] == reference
+        assert Encryptor(True).validate_hash(
+            bytes(pw),
+            data["pw"],
+            HashingAlgorithm.argon2id
+        )
+
+    with open("permanent_storage/test/up/up.hb", "wb") as f:
+        f.write(byt)
