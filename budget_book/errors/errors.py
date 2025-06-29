@@ -14,3 +14,9 @@ class CorruptionError(BaseError):
         if msg == "":
             msg = "The data was corrupted. Please load a backup."
         super().__init__(msg)
+
+class DatabankError(BaseError):
+    def __init__(self, msg=""):
+        if msg == "":
+            msg = "This was a faulty request."
+        super().__init__(msg)
