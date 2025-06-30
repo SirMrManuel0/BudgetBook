@@ -1,11 +1,11 @@
 {
-    "username": {
-        "salt_username": "salty",
-        "nonce_username": "",
-        "tag_username": "",
-        "pw": "hash",
-        "reference": "",
-        "id": "",
-        "validation": "sha256"
+    "id b64": {
+        "username": "b64",
+        "salt_username": "b64",
+        "nonce_username": "b64",
+        "tag_username": "b64",
+        "pw": "hash argon2id as b64",
+        "reference": "b64"
+        "validation": "sha256 b64"
     }
 }

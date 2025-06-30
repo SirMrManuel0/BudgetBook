@@ -5,9 +5,9 @@ import hashlib
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from argon2 import PasswordHasher
+from argon2 import PasswordHasher, exceptions
 from argon2.low_level import hash_secret, Type
-from typing import Iterable, Optional, Union
+from typing import Iterable, Optional, Union, Literal
 
 
 class Converter:
@@ -67,6 +67,40 @@ class Converter:
         """Convert bytes to a Base64 string."""
         return base64.b64encode(byte_data).decode('ascii')
 
+    @classmethod
+    def int_to_b64(cls, value: int, signed: bool, byteorder: Literal["little", "big"] = "big") -> str:
+        length = (value.bit_length() + 7) // 8 or 1
+        byte_data = value.to_bytes(length, byteorder=byteorder, signed=signed)
+        return base64.b64encode(byte_data).decode('ascii')
+
+    @classmethod
+    def b64_to_int(cls, b64: str, signed: bool, byteorder: Literal["little", "big"] = "big") -> int:
+        byte_data = base64.b64decode(b64 + "===")
+        return int.from_bytes(byte_data, byteorder=byteorder, signed=signed)
+
+    @classmethod
+    def int_to_hex(cls, value: int) -> str:
+        return hex(value)[2:]
+
+    @classmethod
+    def hex_to_int(cls, hex_: str) -> int:
+        return int(hex_, 16)
+
+    @classmethod
+    def int_to_bytes(cls, value: int, signed: bool, length: int = None, byteorder: Literal["little", "big"] = 'big') -> bytes:
+        """Convert an integer to bytes.
+
+        If length is None, minimal bytes are used.
+        """
+        if length is None:
+            length = (value.bit_length() + 7) // 8 or 1
+        return value.to_bytes(length, byteorder=byteorder, signed=signed)
+
+    @classmethod
+    def bytes_to_int(cls, byte_data: bytes, signed: bool, byteorder: Literal["little", "big"] = 'big') -> int:
+        """Convert bytes to an integer."""
+        return int.from_bytes(byte_data, byteorder=byteorder, signed=signed)
+
 class HashingAlgorithm:
     @classmethod
     def sha256(cls, data: bytes, _) -> bytes:
@@ -79,6 +113,15 @@ class HashingAlgorithm:
         hash_ = hashlib.sha512()
         hash_.update(data)
         return hash_.digest()
+
+    @classmethod
+    def argon2id(cls, data: bytes, hash_: str) -> bool:
+        ph = PasswordHasher()
+        try:
+            ph.verify(hash_, data)
+            return True
+        except exceptions.VerifyMismatchError:
+            return False
 
 class Encryptor:
     def __init__(self, test=False):
@@ -230,8 +273,11 @@ class Encryptor:
         :return:
         """
 
-        hashed = hashing_algo(data, hash_)
-        return hashed == hash_
+        ret: Union[bytes, bool] = hashing_algo(data, hash_)
+        if isinstance(ret, bytes):
+            return ret == hash_
+        else:
+            return ret
 
     @classmethod
     def hash_pw(cls, pw: bytes) -> str:
