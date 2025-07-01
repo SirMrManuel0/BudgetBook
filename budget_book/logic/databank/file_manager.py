@@ -58,24 +58,22 @@ class FileManager:
         path = self._path_setter(file_path=file_path)
         with open(path, "rb") as f:
             bin_ = f.read()
-        if file_path.endswith(".hb"):
-            validator = bin_[-validator_len:]
-            rest = bin_[:-validator_len]
-            return Converter.byte_to_b64(rest), Converter.byte_to_b64(validator)
-        elif file_path.endswith(".ej"):
+        if path.endswith(".ej"):
             key = bin_[:key_len]
             nonce = bin_[key_len:nonce_len+key_len]
             validator = bin_[nonce_len+key_len:nonce_len+key_len+validator_len]
             data = bin_[nonce_len+key_len+validator_len:]
             return (Converter.byte_to_b64(key), Converter.byte_to_b64(nonce),
                     Converter.byte_to_b64(validator), Converter.byte_to_b64(data))
-        elif file_path.endswith(".k_hb"):
+        elif path.endswith(".k_hb"):
             salt = bin_[:salt_len]
             nonce = bin_[salt_len:salt_len+nonce_len]
             key = bin_[salt_len+nonce_len:]
             return Converter.byte_to_b64(salt), Converter.byte_to_b64(nonce), Converter.byte_to_b64(key)
         else:
-            return "", ""
+            validator = bin_[-validator_len:]
+            rest = bin_[:-validator_len]
+            return Converter.byte_to_b64(rest), Converter.byte_to_b64(validator)
 
     def write(self, data: bytes, file_path: Optional[str] = None):
         path = self._path_setter(file_path=file_path, must_exist=False)
