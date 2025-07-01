@@ -1,7 +1,9 @@
 import hashlib
 import json
 import os.path
+import secrets
 import uuid
+from typing import Optional
 
 from cryptography.exceptions import InvalidTag
 from pylix.errors import TODO, to_test
@@ -14,14 +16,34 @@ from budget_book.path_manager import get_path_abs
 
 # User lookup file: up/up.hb | nonce len: 32 | validation hash sha512 (64 bytes)
 
+def require_reference(func):
+    def wrapper(self, *args, **kwargs):
+        if self._reference == "":
+            raise DatabankError("A reference needs to be given for this action.")
+        return func(self, *args, **kwargs)
+    return wrapper
+
+def require_set_user(func):
+    def wrapper(self, *args, **kwargs):
+        if self._user_id is None:
+            raise DatabankError("A user needs to be set for this action.")
+        return func(self, *args, **kwargs)
+    return wrapper
+
+
 class Databank:
-    def __init__(self, test=False):
+    def __init__(self, test=False, reference=""):
         self._permanent_storage = get_path_abs("../permanent_storage/deploy/")\
             if not test else get_path_abs("../permanent_storage/test/")
         self._encryptor = Encryptor(test)
         self._test = test
         self._file_manager_ps = FileManager(test=test)
         self._file_manager_ps.force_directory_path = self._permanent_storage
+        self._file_manager_reference = FileManager(test=test)
+        self._reference = reference
+        self._private_key = None
+        self._public_key = None
+        self._user_id: Optional[str] = None
 
     def add_user(self, username_utf: str, password: bytearray, reference: str):
         content_dict = self.get_all_users()
@@ -147,3 +169,82 @@ class Databank:
 
             return id_, data
         raise DatabankError(f"This User '{username_utf}' does not exist.")
+
+    def get_reference(self, id_: str) -> str:
+        """
+
+        :param id_: as b64
+        :return: as b64
+        """
+        dict_: dict = self.get_all_users()
+        return Converter.b64_to_utf(dict_[id_]["reference"])
+
+    def set_reference(self, reference: Optional[str] = None, id_: Optional[str] = None) -> None:
+        """
+        The reference is the folder where the key.k_hb is stored.
+
+        :param reference: as utf
+        :param id_: as b64
+        :return:
+        """
+        if id_ is not None or reference is not None:
+            self._reference = self.get_reference(id_) if id_ is not None else reference
+            self._file_manager_reference.force_directory_path = self._reference
+        else:
+            raise DatabankError("A reference or id needs to be given.")
+
+    def set_user(self, username_utf: str, password: bytearray):
+        self.validate_user(username_utf, password)
+        self._user_id = self.get_user(username_utf, password)[0]
+
+    def edit_user(self, field_to_change: str, value, username_utf: str = None, password: bytearray = None, id_: str = None):
+        all_user = self.get_all_users()
+        if id_ is not None:
+            all_user[id_][field_to_change] = value
+        elif username_utf is not None and password is not None:
+            id_, user = self.get_user(username_utf, password)
+            all_user[id_][field_to_change] = value
+        else:
+            raise DatabankError("username and password or id_ needs to be given.")
+
+        de_content = json.dumps(all_user)
+        hash_ = hashlib.sha512()
+        hash_.update(de_content.encode())
+        hash_ = hash_.digest()
+        en_content = self._encryptor.encrypt_system_data(de_content.encode())
+        self._file_manager_ps.write(file_path="up/up.hb", data=en_content + hash_)
+
+    @require_set_user
+    @require_reference
+    def load_private_key(self, password: bytearray) -> None:
+        salt, nonce, enc_priv = self._file_manager_reference.read("user_key.k_hb")
+        self._private_key = self._encryptor.decrypt_private_key(password, enc_priv, nonce, salt, Converter.b64_to_byte(self._user_id))
+        self._private_key = self._encryptor.deserialize_private_key(self._private_key)
+        self._public_key = self._private_key.public_key()
+
+    @require_set_user
+    @require_reference
+    def create_private_key(self, password: bytearray) -> str:
+        """
+        saved key layout = salt, nonce, enc_key
+        "user_key.k_hb"
+        "recovery_key.k_hb"
+        :param password:
+        :return:
+        """
+        priv = self._encryptor.create_private_key()
+        self._public_key = priv.public_key()
+        en_user_priv, salt, nonce = self._encryptor.encrypt_private_key(password, priv, Converter.b64_to_byte(self._user_id))
+        self._file_manager_reference.write(salt + nonce + en_user_priv, "user_key.k_hb")
+        random_key = secrets.token_bytes(56)
+        random_key = Converter.b64_to_byte(self._user_id) + random_key
+        en_recovery_priv, rec_salt, rec_nonce = self._encryptor.encrypt_private_key(bytearray(random_key), priv, Converter.b64_to_byte(self._user_id))
+        self._file_manager_reference.write(rec_salt + rec_nonce + en_recovery_priv, "recovery_key.k_hb")
+        return Converter.byte_to_b64(random_key)
+
+    def delete_private_key(self):
+        del self._private_key
+        self._private_key = None
+
+    def load_recovery_private_key(self):
+        ...

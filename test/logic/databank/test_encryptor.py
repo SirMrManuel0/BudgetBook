@@ -121,6 +121,45 @@ def test_validate_hash():
     hash_ = hash_.digest()
     assert Encryptor.validate_hash(message, hash_, HashingAlgorithm.sha512)
 
+@pytest.mark.parametrize(
+    "pw,salt,expected",
+    [
+        ("Ich backe Kuchen", "yusVp7tFoOpVrvzkTSp87A", "$argon2id$v=19$m=65536,t=3,p=3$yusVp7tFoOpVrvzkTSp87A$s+6PxfRMTcu9FRVYpWxtYb8zGkI9rSHexepWc2QOuMQOHo60bK2UzhcAB6CbtKfbjHxe6Irdh2TBKXrZ87AVeQ"),
+        ("Meine Chickennuggets verbrennen", "Xklcdb7DNVfCSSUO98Jbvw", "$argon2id$v=19$m=65536,t=3,p=3$Xklcdb7DNVfCSSUO98Jbvw$DuzJfxDAeg9ZdlB8ji1ibo6kZoETKLQetb1ToskP1ZPvUzeXsmc0NM+T02WVypYGyMKHmYmi1QpI/Zl1C2duoA"),
+        ("Peterle ist ein Dorfkind", "uA9pEOcaEVX3Qh1gXWHW/g", "$argon2id$v=19$m=65536,t=3,p=3$uA9pEOcaEVX3Qh1gXWHW/g$qnnLqSwuIN4OyED1ey76UrJJSnyFgH/+tixZFP1n+41nDd4hGttr9AFxYLGQk+oET0q+3rcExfEoMHG8dx7LSQ"),
+        ("superSecure1234567899897984198/463841+-968496932q543", "9UKOlbehTTisGNyEL2LDqw", "$argon2id$v=19$m=65536,t=3,p=3$9UKOlbehTTisGNyEL2LDqw$2gIfYGpMoIKbB7XPVkfWKGfGJ8M3syOkVbOfMrXsuL8wMzJ2WhL5ud+cAvMfQYnggqU/gzr1SHo2mPiuLVFfDg"),
+        ("Wo ist die erde?", "2M6nAWvPaXkSjeaBiK/GOQ", "$argon2id$v=19$m=65536,t=3,p=3$2M6nAWvPaXkSjeaBiK/GOQ$Ff0ZeE3zMQkOTjvo6hh2bb3eSESGb5vdXRxDd2tSzGxgt+y4YXJ0AMH6OGamlVuDAB2jXWa8AwGPUK+kW6tokA")
+    ]
+)
+def test_recreate_hash(pw, salt, expected):
+    assert Encryptor.recreate_hash(Converter.utf_to_byte(pw), Converter.b64_to_byte(salt)) == expected
+
+def test_private_key():
+    e = Encryptor(True)
+    key = e.create_private_key()
+    serialized = e.serialize_private_key(key)
+    deserialized = e.deserialize_private_key(serialized)
+    assert key.private_numbers().private_value == deserialized.private_numbers().private_value
+
+@pytest.mark.parametrize(
+    "pw,a",
+    [
+        (b"Ich backe Kuchen", ""),
+        (b"Meine Chickennuggets verbrennen", ""),
+        (b"Peterle ist ein Dorfkind", ""),
+        (b"superSecure1234567899897984198/463841+-968496932q543", ""),
+        (b"Wo ist die erde?", "")
+
+    ]
+)
+def test_encrypt_and_decrypt_private_key(pw, a):
+    e = Encryptor(True)
+    private_key = e.create_private_key()
+    enc, salt, nonce = e.encrypt_private_key(bytearray(pw), private_key)
+    dec = e.decrypt_private_key(bytearray(pw), enc, nonce, salt)
+    des = e.deserialize_private_key(dec)
+    assert private_key.private_numbers().private_value == des.private_numbers().private_value
+
 # ------------------- Converter ----------------------------------------------------------------------------------------
 # UTF <-> B64
 @pytest.mark.parametrize("utf,expected_b64", [

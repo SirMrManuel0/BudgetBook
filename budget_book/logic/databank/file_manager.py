@@ -1,5 +1,5 @@
 import os.path
-from typing import Optional
+from typing import Optional, Union
 
 from budget_book.errors import PathError
 from budget_book.logic.databank.encryptor import Converter
@@ -32,11 +32,10 @@ class FileManager:
             raise PathError("No valid path was in any way given!", path)
         return path
 
-    def read_wo_validator(self, file_path: Optional[str] = None, validator_len: int = 128) -> str:
+    def read_wo_validator(self, file_path: Optional[str] = None) -> str:
         """
 
         :param file_path:
-        :param validator_len:
         :return: as b64
         """
         path = self._path_setter(file_path=file_path)
@@ -45,20 +44,38 @@ class FileManager:
             bin_ = f.read()
         return Converter.byte_to_b64(bin_)
 
-    def read(self, file_path: Optional[str] = None, validator_len: int = 32) -> tuple[str, str]:
+    def read(self, file_path: Optional[str] = None, validator_len: int = 32,
+             key_len: int = 32, nonce_len: int = 12, salt_len: int = 16)\
+            -> Union[tuple[str, str], tuple[str, str, str, str], tuple[str, str, str]]:
         """
 
+        :param key_len:
+        :param nonce_len:
         :param file_path:
         :param validator_len:
-        :return: content, hash | both as b64
+        :return: content, hash or key, nonce, hash, content | all as b64
         """
         path = self._path_setter(file_path=file_path)
-
         with open(path, "rb") as f:
             bin_ = f.read()
+        if file_path.endswith(".hb"):
             validator = bin_[-validator_len:]
             rest = bin_[:-validator_len]
-        return Converter.byte_to_b64(rest), Converter.byte_to_b64(validator)
+            return Converter.byte_to_b64(rest), Converter.byte_to_b64(validator)
+        elif file_path.endswith(".ej"):
+            key = bin_[:key_len]
+            nonce = bin_[key_len:nonce_len+key_len]
+            validator = bin_[nonce_len+key_len:nonce_len+key_len+validator_len]
+            data = bin_[nonce_len+key_len+validator_len:]
+            return (Converter.byte_to_b64(key), Converter.byte_to_b64(nonce),
+                    Converter.byte_to_b64(validator), Converter.byte_to_b64(data))
+        elif file_path.endswith(".k_hb"):
+            salt = bin_[:salt_len]
+            nonce = bin_[salt_len:salt_len+nonce_len]
+            key = bin_[salt_len+nonce_len:]
+            return Converter.byte_to_b64(salt), Converter.byte_to_b64(nonce), Converter.byte_to_b64(key)
+        else:
+            return "", ""
 
     def write(self, data: bytes, file_path: Optional[str] = None):
         path = self._path_setter(file_path=file_path, must_exist=False)

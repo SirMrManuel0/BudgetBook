@@ -1,0 +1,11 @@
+HEADER: key | nonce | validation hash
+{
+    "trade_entity_id": {
+        "name": "b64",
+        "description": "b64",
+        "kind": "person, company, etc. b64",
+        "relationship": "b64",
+        "iban": "b64",
+        "tags": ["tag_id"]
+    }
+}

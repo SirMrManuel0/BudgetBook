@@ -1,0 +1,25 @@
+HEADER: key | nonce | validation hash
+{
+    "account_id": "b64",
+    "name": "b64",
+    "description": "b64",
+    "tags": ["tag_id"],
+    "kind": "shared, child, normal, saving, etc.",
+    "amount": "cents",
+    "other_owner": ["trade_entity_id"],
+    "parent": "account_id or None",
+    "interest_rate": "2%",
+    "interest_interval: "months",
+    "duration": "months",
+    "creation_date": "date",
+    "cards": {
+        "card_id as b64": {
+            "kind": "master, visa, giro, credit card",
+            "medium": "digital or physical",
+            "payback": "0%",
+            "color": "hex",
+            "material": "normal, steel, etc.",
+            "tags": ["tag_id"]
+        }
+    }
+}
