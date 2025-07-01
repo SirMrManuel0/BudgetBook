@@ -1,0 +1,20 @@
+HEADER: key | nonce | validation hash
+as json file:
+{
+    "static": {
+        "month": "1-12",
+        "start_amount": "cents",
+        "end_amount": "cents",
+        "difference": "cents"
+    },
+    "repeated | transaction_id": {
+        "day": "1-31",
+        "value": "cents",
+        "sender": "bool | True = self (value = negativ) | False = trade_entity (value = positiv)",
+        "trade_entity": "b64",
+        "kind": "as b64 (standard, lohn, spende, card payment, etc.)",
+        "description": "as b64",
+        "tags": ["tag_id"],
+        "card_id": "b64"
+    }
+}

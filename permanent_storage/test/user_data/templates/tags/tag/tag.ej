@@ -1,0 +1,9 @@
+HEADER: key | nonce | validation hash
+{
+    "tag_id": "b64",
+    "tag_name": "b64",
+    "tag_description": "b64",
+    "tag_color": "hex",
+    "tag_icon": "b64",
+    "tag_group_id": "b64"
+}

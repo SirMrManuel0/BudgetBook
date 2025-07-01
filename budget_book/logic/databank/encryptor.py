@@ -3,11 +3,16 @@ import base64
 import keyring
 import hashlib
 
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import serialization
 from argon2 import PasswordHasher, exceptions
 from argon2.low_level import hash_secret, Type
 from typing import Iterable, Optional, Union, Literal
+
+from pylix.errors import to_test
 
 
 class Converter:
@@ -280,11 +285,81 @@ class Encryptor:
             return ret
 
     @classmethod
-    def hash_pw(cls, pw: bytes) -> str:
+    def hash_pw(cls, pw: bytes, hash_len=64) -> str:
         """
 
         :param pw: as b64
+        :param hash_len: as b64
         :return: as b64
         """
-        ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=3, hash_len=64)
+        ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=3, hash_len=hash_len)
         return ph.hash(pw)
+
+    @classmethod
+    def recreate_hash(cls, pw: bytes, salt: bytes,
+                      time_cost: int = 3, memory_cost: int = 65536, parallelism: int = 3, hash_len: int = 64) -> str:
+        return hash_secret(
+            secret=pw,
+            salt=salt,
+            time_cost=time_cost,
+            memory_cost=memory_cost,
+            parallelism=parallelism,
+            hash_len=hash_len,
+            type=Type.ID,
+        ).decode()
+
+    @classmethod
+    def create_private_key(cls) -> EllipticCurvePrivateKey:
+        return ec.generate_private_key(ec.BrainpoolP256R1())
+
+    @classmethod
+    def serialize_private_key(cls, private_key: EllipticCurvePrivateKey) -> bytes:
+        return private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+    @classmethod
+    def deserialize_private_key(cls, pem_data: bytes) -> EllipticCurvePrivateKey:
+        return serialization.load_pem_private_key(
+            pem_data,
+            password=None  # Use bytes password if encrypted
+        )
+
+    def encrypt_private_key(self, password: bytearray,
+                            private_key: Optional[EllipticCurvePrivateKey] = None,
+                            user_id: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
+        """
+
+        :param password:
+        :param private_key:
+        :param user_id:
+        :return: encrypted, salt, nonce
+        """
+        if private_key is not None:
+            private_key: bytes = self.serialize_private_key(private_key)
+        else:
+            private_key: bytes = self.serialize_private_key(self.create_private_key())
+        hash_pw = self.hash_pw(bytes(password), hash_len=32)
+
+        hash_pw = hash_pw.split("$")
+        salt = Converter.b64_to_byte(hash_pw[-2])
+        key = Converter.b64_to_byte(hash_pw[-1])
+
+        chacha = ChaCha20Poly1305(key)
+        nonce = secrets.token_bytes(12)
+        aad = user_id
+
+        return chacha.encrypt(nonce, private_key, aad), salt, nonce
+
+    def decrypt_private_key(self, password: bytearray,
+                            private_key: bytes,
+                            nonce: bytes, salt: bytes,
+                            user_id: Optional[bytes] = None) -> bytes:
+        hash_pw = self.recreate_hash(bytes(password), salt, hash_len=32)
+        hash_pw = hash_pw.split("$")
+        key = Converter.b64_to_byte(hash_pw[-1])
+        chacha = ChaCha20Poly1305(key)
+        return chacha.decrypt(nonce, private_key, user_id)
+
