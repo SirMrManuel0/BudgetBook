@@ -49,6 +49,7 @@ class FileManager:
             -> Union[tuple[str, str], tuple[str, str, str, str], tuple[str, str, str]]:
         """
 
+        :param salt_len:
         :param key_len:
         :param nonce_len:
         :param file_path:

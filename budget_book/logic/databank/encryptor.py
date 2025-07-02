@@ -3,10 +3,11 @@ import base64
 import keyring
 import hashlib
 
-from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from argon2 import PasswordHasher, exceptions
 from argon2.low_level import hash_secret, Type
@@ -309,11 +310,14 @@ class Encryptor:
         ).decode()
 
     @classmethod
-    def create_private_key(cls) -> EllipticCurvePrivateKey:
-        return ec.generate_private_key(ec.BrainpoolP256R1())
+    def create_private_key(cls) -> RSAPrivateKey:
+        return rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+        )
 
     @classmethod
-    def serialize_private_key(cls, private_key: EllipticCurvePrivateKey) -> bytes:
+    def serialize_private_key(cls, private_key: RSAPrivateKey) -> bytes:
         return private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
@@ -321,14 +325,14 @@ class Encryptor:
         )
 
     @classmethod
-    def deserialize_private_key(cls, pem_data: bytes) -> EllipticCurvePrivateKey:
+    def deserialize_private_key(cls, pem_data: bytes) -> RSAPrivateKey:
         return serialization.load_pem_private_key(
             pem_data,
-            password=None  # Use bytes password if encrypted
+            password=None
         )
 
     def encrypt_private_key(self, password: bytearray,
-                            private_key: Optional[EllipticCurvePrivateKey] = None,
+                            private_key: Optional[RSAPrivateKey] = None,
                             user_id: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
         """
 
@@ -363,3 +367,13 @@ class Encryptor:
         chacha = ChaCha20Poly1305(key)
         return chacha.decrypt(nonce, private_key, user_id)
 
+    @classmethod
+    def decrypt_rsa(cls, private_key: RSAPrivateKey, ciphertext: bytes, label: Optional[bytes] = None) -> bytes:
+        return private_key.decrypt(
+            ciphertext,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=label
+            )
+        )

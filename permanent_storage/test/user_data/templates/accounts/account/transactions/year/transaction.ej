@@ -1,4 +1,4 @@
-HEADER: key | nonce | validation hash
+HEADER: key-32 bytes  | nonce-24 bytes | validation hash-32 bytes | tag-16 bytes  use XChaCha20 to encrypt
 as json file:
 {
     "static": {

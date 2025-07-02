@@ -6,7 +6,7 @@ import uuid
 from typing import Optional
 
 from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from pylix.errors import TODO, to_test
 
 from budget_book.errors.errors import CorruptionError, DatabankError
@@ -15,6 +15,7 @@ from budget_book.logic.databank.encryptor import Converter, HashingAlgorithm
 from budget_book.logic.databank.file_manager import FileManager
 from budget_book.path_manager import get_path_abs
 
+
 # User lookup file: up/up.hb | nonce len: 32 | validation hash sha512 (64 bytes)
 
 def require_reference(func):
@@ -22,6 +23,7 @@ def require_reference(func):
         if self._reference == "":
             raise DatabankError("A reference needs to be given for this action.")
         return func(self, *args, **kwargs)
+
     return wrapper
 
 def require_set_user(func):
@@ -29,12 +31,25 @@ def require_set_user(func):
         if self._user_id is None:
             raise DatabankError("A user needs to be set for this action.")
         return func(self, *args, **kwargs)
+
     return wrapper
+
+def require_private_key(func):
+    def wrapper(self, *args, **kwargs):
+        if self._private_key is None:
+            raise DatabankError("The private key is needed.")
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
+
+USER_PRIVATE_KEY_FILE_NAME: str = "user_key.k_hb"
+RECOVERY_PRIVATE_KEY_FILE_NAME: str = "recovery_key.k_hb"
 
 
 class Databank:
     def __init__(self, test=False, reference=""):
-        self._permanent_storage = get_path_abs("../permanent_storage/deploy/")\
+        self._permanent_storage = get_path_abs("../permanent_storage/deploy/") \
             if not test else get_path_abs("../permanent_storage/test/")
         self._encryptor = Encryptor(test)
         self._test = test
@@ -42,9 +57,10 @@ class Databank:
         self._file_manager_ps.force_directory_path = self._permanent_storage
         self._file_manager_reference = FileManager(test=test)
         self._reference = reference
-        self._private_key = None
+        self._private_key: Optional[RSAPrivateKey] = None
         self._public_key = None
         self._user_id: Optional[str] = None
+        self._user_id_bytes: Optional[bytes] = None
         self._id_len: int = 4
 
     def add_user(self, username_utf: str, password: bytearray, reference: str):
@@ -88,7 +104,7 @@ class Databank:
         hash_.update(de_content.encode())
         hash_ = hash_.digest()
         en_content = self._encryptor.encrypt_system_data(de_content.encode())
-        self._file_manager_ps.write(file_path="up/up.hb", data=en_content+hash_)
+        self._file_manager_ps.write(file_path="up/up.hb", data=en_content + hash_)
 
     def get_all_users(self) -> dict:
         en_content, hash_ = self._file_manager_ps.read(file_path="up/up.hb", validator_len=64)
@@ -120,7 +136,8 @@ class Databank:
 
     def test_user(self, user_candidate: dict, username_bytes: bytes, password: bytearray) -> bool:
         name_candidate: bytes = Converter.b64_to_byte(user_candidate["username"])
-        u_key, _ = self._encryptor.generate_username_key(username_bytes, Converter.b64_to_byte(user_candidate["salt_username"]))
+        u_key, _ = self._encryptor.generate_username_key(username_bytes,
+                                                         Converter.b64_to_byte(user_candidate["salt_username"]))
         try:
             de_username = self._encryptor.decrypt_username(
                 name_candidate,
@@ -203,9 +220,11 @@ class Databank:
     def set_user(self, username_utf: str, password: bytearray):
         self.validate_user(username_utf, password)
         self._user_id = self.get_user(username_utf, password)[0]
+        self._user_id_bytes = Converter.b64_to_byte(self._user_id)
 
     @to_test
-    def edit_user(self, field_to_change: str, value, username_utf: str = None, password: bytearray = None, id_: str = None):
+    def edit_user(self, field_to_change: str, value, username_utf: str = None, password: bytearray = None,
+                  id_: str = None):
         all_user = self.get_all_users()
         if id_ is not None:
             all_user[id_][field_to_change] = value
@@ -234,11 +253,48 @@ class Databank:
         self._file_manager_ps.write(file_path="up/up.hb", data=en_content + hash_)
 
     @to_test
+    def _write_private_key(self, private_key: RSAPrivateKey, file: str, password: bytearray, user_id: bytes,
+                           file_manager: Optional[FileManager] = None):
+        if file_manager is None:
+            file_manager = self._file_manager_reference
+        enc_private, salt, nonce = self._encryptor.encrypt_private_key(password, private_key, user_id)
+        file_manager.write(salt + nonce + enc_private, file)
+
+    @to_test
+    def _read_private_key(self, file: str, file_manager: Optional[FileManager] = None) -> tuple[str, str, str]:
+        """
+
+        :param file:
+        :param file_manager:
+        :return: salt, nonce, key | all as b64
+        """
+        if file_manager is None:
+            file_manager = self._file_manager_reference
+        return file_manager.read(file, salt_len=16, nonce_len=12)
+
+    @to_test
+    def _load_recovery_private_key(self, key: str) -> RSAPrivateKey:
+        key = Converter.b64_to_byte(key)
+        id_ = key[:self._id_len]
+        id_ = Converter.byte_to_b64(id_)
+        reference = self.get_reference(id_)
+        file_manager = FileManager(test=self._test)
+        file_manager.force_directory_path = reference
+        salt, nonce, (enc_private) = self._read_private_key(RECOVERY_PRIVATE_KEY_FILE_NAME, file_manager)
+        private_key = self._encryptor.decrypt_private_key(bytearray(key), Converter.b64_to_byte(enc_private),
+                                                          Converter.b64_to_byte(nonce), Converter.b64_to_byte(salt),
+                                                          Converter.b64_to_byte(id_))
+        return self._encryptor.deserialize_private_key(private_key)
+
+    @to_test
     @require_set_user
     @require_reference
     def load_private_key(self, password: bytearray) -> None:
-        salt, nonce, enc_priv = self._file_manager_reference.read("user_key.k_hb")
-        self._private_key = self._encryptor.decrypt_private_key(password, enc_priv, nonce, salt, Converter.b64_to_byte(self._user_id))
+        salt, nonce, enc_priv = self._read_private_key(USER_PRIVATE_KEY_FILE_NAME)
+        self._private_key = self._encryptor.decrypt_private_key(password, Converter.b64_to_byte(enc_priv),
+                                                                Converter.b64_to_byte(nonce),
+                                                                Converter.b64_to_byte(salt),
+                                                                Converter.b64_to_byte(self._user_id))
         self._private_key = self._encryptor.deserialize_private_key(self._private_key)
         self._public_key = self._private_key.public_key()
 
@@ -255,30 +311,17 @@ class Databank:
         """
         priv = self._encryptor.create_private_key()
         self._public_key = priv.public_key()
-        en_user_priv, salt, nonce = self._encryptor.encrypt_private_key(password, priv, Converter.b64_to_byte(self._user_id))
-        self._file_manager_reference.write(salt + nonce + en_user_priv, "user_key.k_hb")
+        self._write_private_key(priv, USER_PRIVATE_KEY_FILE_NAME, password, Converter.b64_to_byte(self._user_id))
         random_key = secrets.token_bytes(56)
         random_key = Converter.b64_to_byte(self._user_id) + random_key
-        en_recovery_priv, rec_salt, rec_nonce = self._encryptor.encrypt_private_key(bytearray(random_key), priv, Converter.b64_to_byte(self._user_id))
-        self._file_manager_reference.write(rec_salt + rec_nonce + en_recovery_priv, "recovery_key.k_hb")
+        self._write_private_key(priv, RECOVERY_PRIVATE_KEY_FILE_NAME, bytearray(random_key),
+                                Converter.b64_to_byte(self._user_id))
         return Converter.byte_to_b64(random_key)
 
     @to_test
     def delete_private_key(self):
         del self._private_key
         self._private_key = None
-
-    @to_test
-    def _load_recovery_private_key(self, key: str) -> EllipticCurvePrivateKey:
-        key = Converter.b64_to_byte(key)
-        id_ = key[:self._id_len]
-        id_ = Converter.byte_to_b64(id_)
-        reference = self.get_reference(id_)
-        file_manager = FileManager(test=self._test)
-        file_manager.force_directory_path = reference
-        salt, nonce, enc_private = file_manager.read("recovery_key.k_hb", salt_len=16, nonce_len=12)
-        private_key = self._encryptor.decrypt_private_key(bytearray(key), enc_private, nonce, salt, Converter.b64_to_byte(id_))
-        return self._encryptor.deserialize_private_key(private_key)
 
     @to_test
     def recover_password(self, recovery_key: str, new_password: bytearray):
@@ -289,13 +332,38 @@ class Databank:
         reference = self.get_reference(id_)
         file_manager = FileManager(test=self._test)
         file_manager.force_directory_path = reference
-        enc_user_private_key, salt, nonce = self._encryptor.encrypt_private_key(new_password, private_key, id_bytes)
         new_recovery_key = secrets.token_bytes(56)
         new_recovery_key = id_bytes + new_recovery_key
-        enc_recovery_private_key, salt_rec, nonce_rec = self._encryptor.encrypt_private_key(bytearray(new_recovery_key), private_key, id_bytes)
-        file_manager.write(salt + nonce + enc_user_private_key, "user_key.k_hb")
-        file_manager.write(salt_rec + nonce_rec + enc_recovery_private_key, "recovery_key.k_hb")
-
+        self._write_private_key(private_key, USER_PRIVATE_KEY_FILE_NAME, new_password, id_bytes, file_manager)
+        self._write_private_key(private_key, RECOVERY_PRIVATE_KEY_FILE_NAME, bytearray(new_recovery_key), id_bytes,
+                                file_manager)
         self.edit_user("pw", Converter.utf_to_b64(self._encryptor.hash_pw(bytes(new_password))))
 
         return new_recovery_key
+
+    @to_test
+    @require_set_user
+    @require_reference
+    def change_password(self, old_password: bytearray, new_password: bytearray):
+        salt, nonce, enc_private = self._read_private_key(USER_PRIVATE_KEY_FILE_NAME)
+        private_key = self._encryptor.decrypt_private_key(old_password, Converter.b64_to_byte(enc_private),
+                                                          Converter.b64_to_byte(nonce), Converter.b64_to_byte(salt),
+                                                          self._user_id_bytes)
+        private_key = self._encryptor.deserialize_private_key(private_key)
+        self._write_private_key(private_key, USER_PRIVATE_KEY_FILE_NAME, new_password, self._user_id_bytes)
+        self.edit_user("pw", Converter.utf_to_b64(self._encryptor.hash_pw(bytes(new_password))))
+
+    @require_private_key
+    @require_set_user
+    @require_reference
+    def _read_ej(self, path: str) -> dict:
+        key, nonce, hash_, enc_dict = self._file_manager_reference.read(
+            path,
+            key_len=32,
+            nonce_len=32,
+            validator_len=32
+        )
+
+        decrypted: bytes = self._encryptor.decrypt_rsa(self._private_key, key + nonce + hash_, self._user_id_bytes)
+
+
