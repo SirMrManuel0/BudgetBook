@@ -3,7 +3,7 @@ import base64
 import keyring
 import hashlib
 
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
@@ -74,8 +74,10 @@ class Converter:
         return base64.b64encode(byte_data).decode('ascii')
 
     @classmethod
-    def int_to_b64(cls, value: int, signed: bool, byteorder: Literal["little", "big"] = "big") -> str:
-        length = (value.bit_length() + 7) // 8 or 1
+    def int_to_b64(cls, value: int, signed: bool,
+                   byteorder: Literal["little", "big"] = "big", length: Optional[int] = None) -> str:
+        if length is None:
+            length = (value.bit_length() + 7) // 8 or 1
         byte_data = value.to_bytes(length, byteorder=byteorder, signed=signed)
         return base64.b64encode(byte_data).decode('ascii')
 
@@ -368,6 +370,7 @@ class Encryptor:
         return chacha.decrypt(nonce, private_key, user_id)
 
     @classmethod
+    @to_test
     def decrypt_rsa(cls, private_key: RSAPrivateKey, ciphertext: bytes, label: Optional[bytes] = None) -> bytes:
         return private_key.decrypt(
             ciphertext,
@@ -377,3 +380,40 @@ class Encryptor:
                 label=label
             )
         )
+
+    @classmethod
+    @to_test
+    def encrypt_rsa(cls, public_key: RSAPublicKey, plaintext: bytes, label: Optional[bytes] = None) -> bytes:
+        return public_key.encrypt(
+            plaintext,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=label
+            )
+        )
+
+    @classmethod
+    @to_test
+    def decrypt_chacha20(cls, key: bytes, nonce: bytes, encrypted_data: bytes,
+                         authenticated: Optional[bytes] = None) -> bytes:
+        return ChaCha20Poly1305(key).decrypt(nonce, encrypted_data, authenticated)
+
+    @classmethod
+    @to_test
+    def encrypt_chacha20(cls, clear_text: bytes, authenticated: Optional[bytes] = None,
+                         nonce: Optional[bytes] = None, key: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
+        """
+
+        :param clear_text:
+        :param authenticated:
+        :param nonce:
+        :param key:
+        :return: key, nonce, encrypted
+        """
+        if nonce is None:
+            nonce = secrets.token_bytes(24)
+        if key is None:
+            key = ChaCha20Poly1305.generate_key()
+        chacha = ChaCha20Poly1305(key)
+        return key, nonce, chacha.encrypt(nonce, clear_text, authenticated)

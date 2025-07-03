@@ -45,27 +45,25 @@ class FileManager:
         return Converter.byte_to_b64(bin_)
 
     def read(self, file_path: Optional[str] = None, validator_len: int = 32,
-             key_len: int = 32, nonce_len: int = 12, salt_len: int = 16)\
+             key_len: int = 32, nonce_len: int = 12, salt_len: int = 16, header_len: int = 256)\
             -> Union[tuple[str, str], tuple[str, str, str, str], tuple[str, str, str]]:
         """
 
+        :param header_len:
         :param salt_len:
         :param key_len:
         :param nonce_len:
         :param file_path:
         :param validator_len:
-        :return: content, hash or key, nonce, hash, content | all as b64
+        :return: content, hash or header, content | all as b64
         """
         path = self._path_setter(file_path=file_path)
         with open(path, "rb") as f:
             bin_ = f.read()
         if path.endswith(".ej"):
-            key = bin_[:key_len]
-            nonce = bin_[key_len:nonce_len+key_len]
-            validator = bin_[nonce_len+key_len:nonce_len+key_len+validator_len]
-            data = bin_[nonce_len+key_len+validator_len:]
-            return (Converter.byte_to_b64(key), Converter.byte_to_b64(nonce),
-                    Converter.byte_to_b64(validator), Converter.byte_to_b64(data))
+            header = bin_[:header_len]
+            data = bin_[header_len:]
+            return Converter.byte_to_b64(header), Converter.byte_to_b64(data)
         elif path.endswith(".k_hb"):
             salt = bin_[:salt_len]
             nonce = bin_[salt_len:salt_len+nonce_len]

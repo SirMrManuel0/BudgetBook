@@ -2,12 +2,13 @@ import hashlib
 import json
 import os.path
 import secrets
-import uuid
-from typing import Optional
+import json
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from pylix.errors import TODO, to_test
+from typing import Optional
 
 from budget_book.errors.errors import CorruptionError, DatabankError
 from budget_book.logic.databank import Encryptor
@@ -38,6 +39,14 @@ def require_private_key(func):
     def wrapper(self, *args, **kwargs):
         if self._private_key is None:
             raise DatabankError("The private key is needed.")
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
+def require_public_key(func):
+    def wrapper(self, *args, **kwargs):
+        if self._public_key is None:
+            raise DatabankError("The public key is needed.")
         return func(self, *args, **kwargs)
 
     return wrapper
@@ -319,6 +328,7 @@ class Databank:
         return Converter.byte_to_b64(random_key)
 
     @to_test
+    @require_private_key
     def delete_private_key(self):
         del self._private_key
         self._private_key = None
@@ -353,17 +363,72 @@ class Databank:
         self._write_private_key(private_key, USER_PRIVATE_KEY_FILE_NAME, new_password, self._user_id_bytes)
         self.edit_user("pw", Converter.utf_to_b64(self._encryptor.hash_pw(bytes(new_password))))
 
+    @to_test
     @require_private_key
-    @require_set_user
     @require_reference
     def _read_ej(self, path: str) -> dict:
-        key, nonce, hash_, enc_dict = self._file_manager_reference.read(
+        header, enc_dict = self._file_manager_reference.read(
             path,
-            key_len=32,
-            nonce_len=32,
-            validator_len=32
+            header_len=256
         )
 
-        decrypted: bytes = self._encryptor.decrypt_rsa(self._private_key, key + nonce + hash_, self._user_id_bytes)
+        key_len: int = 32
+        nonce_len: int = 12
+        validation_hash_len: int = 64
 
+        decrypted: bytes = self._encryptor.decrypt_rsa(self._private_key, header)
+        key = decrypted[:key_len]
+        nonce = decrypted[key_len : key_len+nonce_len]
+        validation_hash = decrypted[key_len+nonce_len : key_len+nonce_len+validation_hash_len]
 
+        decrypted_content: bytes = self._encryptor.decrypt_chacha20(key, nonce, enc_dict)
+
+        hash_ = hashlib.sha512()
+        hash_.update(decrypted_content)
+        hash_ = hash_.digest()
+
+        if validation_hash != hash_:
+            raise CorruptionError("The files content has been corrupted.")
+
+        return json.loads(decrypted_content.decode())
+
+    @to_test
+    @require_reference
+    @require_public_key
+    def _write_ej(self, path: str, data: dict, key: Optional[bytes] = None, nonce: Optional[bytes] = None) -> None:
+        data = json.dumps(data)
+        data = data.encode()
+        key, nonce, enc_data = self._encryptor.encrypt_chacha20(data, key=key, nonce=nonce)
+        validation = hashlib.sha512()
+        validation.update(data)
+        validation = validation.digest()
+        header = self._encryptor.encrypt_rsa(self._public_key, key + nonce + validation)
+        self._file_manager_reference.write(header + enc_data, path)
+
+    @to_test
+    @require_reference
+    @require_private_key
+    def get_all_trade_entities(self) -> dict:
+        return self._read_ej("trade_entities.ej")
+
+    @TODO
+    @to_test
+    @require_reference
+    @require_private_key
+    def add_trade_entities(self, name: str, kind: Optional[str] = None,
+                           description: Optional[str] = None, relationship: Optional[str] = None,
+                           iban: Optional[str] = None, tags: Optional[list] = None) -> None:
+        all_ = self.get_all_trade_entities()
+        new_id: int = -1
+        for key in all_.keys():
+            new_id = max(new_id, key)
+        new_id += 1
+        new_id_b64: str = Converter.int_to_b64(new_id, False)
+        all_[new_id_b64] = {
+            "name": Converter.utf_to_b64(name),
+            "description": Converter.utf_to_b64(description) if description is not None else "",
+            "kind": Converter.utf_to_b64(kind) if kind is not None else "",
+            "relationship": Converter.utf_to_b64(relationship) if relationship is not None else "",
+            "iban": iban if iban is not None else "",
+            "tags": tags if tags is not None else list()
+        }
