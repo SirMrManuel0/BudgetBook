@@ -1,0 +1,2 @@
+HEADER: key-32 bytes  | nonce-24 bytes | validation hash-64 bytes  use ChaCha20 to encrypt the json
+BODY as json

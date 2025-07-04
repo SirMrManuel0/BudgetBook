@@ -3,10 +3,11 @@ import base64
 import keyring
 import hashlib
 
-from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from argon2 import PasswordHasher, exceptions
 from argon2.low_level import hash_secret, Type
@@ -73,8 +74,10 @@ class Converter:
         return base64.b64encode(byte_data).decode('ascii')
 
     @classmethod
-    def int_to_b64(cls, value: int, signed: bool, byteorder: Literal["little", "big"] = "big") -> str:
-        length = (value.bit_length() + 7) // 8 or 1
+    def int_to_b64(cls, value: int, signed: bool,
+                   byteorder: Literal["little", "big"] = "big", length: Optional[int] = None) -> str:
+        if length is None:
+            length = (value.bit_length() + 7) // 8 or 1
         byte_data = value.to_bytes(length, byteorder=byteorder, signed=signed)
         return base64.b64encode(byte_data).decode('ascii')
 
@@ -309,11 +312,14 @@ class Encryptor:
         ).decode()
 
     @classmethod
-    def create_private_key(cls) -> EllipticCurvePrivateKey:
-        return ec.generate_private_key(ec.BrainpoolP256R1())
+    def create_private_key(cls) -> RSAPrivateKey:
+        return rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+        )
 
     @classmethod
-    def serialize_private_key(cls, private_key: EllipticCurvePrivateKey) -> bytes:
+    def serialize_private_key(cls, private_key: RSAPrivateKey) -> bytes:
         return private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
@@ -321,14 +327,14 @@ class Encryptor:
         )
 
     @classmethod
-    def deserialize_private_key(cls, pem_data: bytes) -> EllipticCurvePrivateKey:
+    def deserialize_private_key(cls, pem_data: bytes) -> RSAPrivateKey:
         return serialization.load_pem_private_key(
             pem_data,
-            password=None  # Use bytes password if encrypted
+            password=None
         )
 
     def encrypt_private_key(self, password: bytearray,
-                            private_key: Optional[EllipticCurvePrivateKey] = None,
+                            private_key: Optional[RSAPrivateKey] = None,
                             user_id: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
         """
 
@@ -363,3 +369,51 @@ class Encryptor:
         chacha = ChaCha20Poly1305(key)
         return chacha.decrypt(nonce, private_key, user_id)
 
+    @classmethod
+    @to_test
+    def decrypt_rsa(cls, private_key: RSAPrivateKey, ciphertext: bytes, label: Optional[bytes] = None) -> bytes:
+        return private_key.decrypt(
+            ciphertext,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=label
+            )
+        )
+
+    @classmethod
+    @to_test
+    def encrypt_rsa(cls, public_key: RSAPublicKey, plaintext: bytes, label: Optional[bytes] = None) -> bytes:
+        return public_key.encrypt(
+            plaintext,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=label
+            )
+        )
+
+    @classmethod
+    @to_test
+    def decrypt_chacha20(cls, key: bytes, nonce: bytes, encrypted_data: bytes,
+                         authenticated: Optional[bytes] = None) -> bytes:
+        return ChaCha20Poly1305(key).decrypt(nonce, encrypted_data, authenticated)
+
+    @classmethod
+    @to_test
+    def encrypt_chacha20(cls, clear_text: bytes, authenticated: Optional[bytes] = None,
+                         nonce: Optional[bytes] = None, key: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
+        """
+
+        :param clear_text:
+        :param authenticated:
+        :param nonce:
+        :param key:
+        :return: key, nonce, encrypted
+        """
+        if nonce is None:
+            nonce = secrets.token_bytes(24)
+        if key is None:
+            key = ChaCha20Poly1305.generate_key()
+        chacha = ChaCha20Poly1305(key)
+        return key, nonce, chacha.encrypt(nonce, clear_text, authenticated)

@@ -139,7 +139,7 @@ def test_private_key():
     key = e.create_private_key()
     serialized = e.serialize_private_key(key)
     deserialized = e.deserialize_private_key(serialized)
-    assert key.private_numbers().private_value == deserialized.private_numbers().private_value
+    assert key.private_numbers() == deserialized.private_numbers()
 
 @pytest.mark.parametrize(
     "pw,a",
@@ -158,7 +158,7 @@ def test_encrypt_and_decrypt_private_key(pw, a):
     enc, salt, nonce = e.encrypt_private_key(bytearray(pw), private_key)
     dec = e.decrypt_private_key(bytearray(pw), enc, nonce, salt)
     des = e.deserialize_private_key(dec)
-    assert private_key.private_numbers().private_value == des.private_numbers().private_value
+    assert private_key.private_numbers() == des.private_numbers()
 
 # ------------------- Converter ----------------------------------------------------------------------------------------
 # UTF <-> B64

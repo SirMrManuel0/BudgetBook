@@ -1,6 +1,8 @@
 class User:
     def __init__(self):
-        saving_directory: str = ""
-        key: str = ""
-        association: list = []
-        family: list = []
+        self._association: list = []
+        self._accounts: list = []
+        self._portfolios: list = []
+        self._icon: str = ""
+        self._color: list = []
+        self._theme: str = ""
