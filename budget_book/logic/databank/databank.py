@@ -231,7 +231,7 @@ class Databank:
         self._user_id = self.get_user(username_utf, password)[0]
         self._user_id_bytes = Converter.b64_to_byte(self._user_id)
 
-    @to_test
+
     def edit_user(self, field_to_change: str, value, username_utf: str = None, password: bytearray = None,
                   id_: str = None):
         all_user = self.get_all_users()

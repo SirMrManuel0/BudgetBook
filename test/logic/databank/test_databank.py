@@ -1,5 +1,7 @@
 import json
 import os
+from asyncio.constants import THREAD_JOIN_TIMEOUT
+from trace import CoverageResults
 
 import pytest
 
@@ -137,3 +139,59 @@ def test_get_reference():
 
     with open("permanent_storage/test/up/up.hb", "wb") as f:
         f.write(byt)
+
+def test_edit_user():
+    with open("permanent_storage/test/up/up.hb", "rb") as f:
+        byt = f.read()
+    with open("permanent_storage/test/up/up.hb", "wb") as f:
+        f.write(b"")
+
+    databank: Databank = Databank(True)
+    users_to_add: list[tuple[str, bytearray, str]] = [
+        ("Thomas Erdbeere", bytearray(b"SuperSicher"), "permanent_storage"),
+        ("Valerie Dino", bytearray(b"SichererGehtEs Nicht <3"), "permanent_storage/deploy"),
+    ]
+    for username, pw, reference in users_to_add:
+        databank.add_user(username, pw, reference)
+
+    newPassword = bytearray(b"SuperSicher2")
+    encryptor = Encryptor(True)
+    newPasswordHash = encryptor.hash_pw(bytes(newPassword) , 64)
+    newPasswordHash = Converter.utf_to_b64(newPasswordHash)
+
+    id1, inhalt = databank.get_user("Thomas Erdbeere", bytearray(b"SuperSicher"))
+    databank.edit_user("pw", newPasswordHash , "Thomas Erdbeere", None, id1)
+    id1, inhalt = databank.get_user("Thomas Erdbeere", bytearray(b"SuperSicher2"))
+
+    newPassword = bytes(newPassword)
+
+    assert Encryptor.validate_hash(newPassword, inhalt["pw"], HashingAlgorithm.argon2id)
+
+    newReference = "permanent_storage/test"
+    newReference = Converter.utf_to_b64(newReference)
+
+    id2, inhalt = databank.get_user("Valerie Dino", bytearray(b"SichererGehtEs Nicht <3"))
+    databank.edit_user("reference", newReference, "Valerie Dino", None, id2)
+    id2, inhalt = databank.get_user("Valerie Dino", bytearray(b"SichererGehtEs Nicht <3"))
+
+    assert "permanent_storage/test" == inhalt["reference"]
+
+
+    with open("permanent_storage/test/up/up.hb", "wb") as f:
+        f.write(byt)
+
+
+def test_write_private_key():
+    assert True
+
+def test_read_private_key():
+    assert True
+
+def test_load_recovery_private_key():
+    assert True
+
+def  test_load_private_key():
+    assert True
+
+def create_private_key(self, password: bytearray) -> str:
+    assert True
