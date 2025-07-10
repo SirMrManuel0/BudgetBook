@@ -133,6 +133,11 @@ class HashingAlgorithm:
 
 class Encryptor:
     def __init__(self, test=False):
+        """
+        The encryptor of the database.
+
+        :param test: If tests are programmed, the parameter test must be True.
+        """
         self._test = test
 
     def _get_system_key(self) -> bytes:
@@ -185,10 +190,11 @@ class Encryptor:
 
     def generate_username_key(self, username: bytes, salt: Optional[bytes] = None) -> tuple[bytes, bytes]:
         """
+        This method is used to generate the key for the username (usernames are encrypted with themselves)
 
-        :param username: as bytse
-        :param salt:  as bytes
-        :return: bytes
+        :param username: The username must be given as bytes
+        :param salt: If this is not the first time, the salt of the first salt generation must be given as bytes
+        :return: It returns in the same order the username key and the salt. both as bytes
         """
         system_key = self._get_system_key()
         salt_ = ""
@@ -219,11 +225,12 @@ class Encryptor:
 
     def encrypt_username(self, de_username: bytes, salt: Optional[bytes] = None, nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes, bytes]:
         """
+        In order to encrypt the username it needs to be given together with the salt and nonce, if it is not the first time.
 
-        :param salt: as bytes
-        :param de_username: as bytes
-        :param nonce: as bytes
-        :return: bytes
+        :param salt: The salt must be given, if it is not the first time, as bytes
+        :param de_username: The username must be given as bytes
+        :param nonce: The nonce must be given, if it is not the first time, as bytes
+        :return: It returns in the same order as bytes: the encrypted username, the nonce, the tag (used by AES-GCM), the salt
         """
         key_, salt_ = self.generate_username_key(username=de_username, salt=salt)
         en_username = ""
@@ -244,11 +251,29 @@ class Encryptor:
 
     @classmethod
     def decrypt_username(cls, en_username: bytes, nonce: bytes, tag: bytes, user_key: bytes) -> bytes:
+        """
+        This method is used to decrypt the username.
+
+
+        :param en_username: The encrypted username must be given as bytes
+        :param nonce: The nonce must be given as bytes
+        :param tag: The tag must be given as bytes
+        :param user_key: The key must be given as bytes (and should be generated with Encryptor.generate_username_key(username, salt))
+        :return: This function returns the username as bytes
+        """
         aes_gcm = AESGCM(user_key)
         plaintext = aes_gcm.decrypt(nonce, en_username + tag, associated_data=None)
         return plaintext
 
     def encrypt_system_data(self, data: bytes, nonce_len: int = 32, nonce: Optional[bytes] = None) -> bytes:
+        """
+        All system datas are encrypted with this function.
+
+        :param data: The data must be given as bytes
+        :param nonce_len: The nonce_len is standard by 32, but could be increased (should only be done, if it is noted for this particular data)
+        :param nonce: The nonce must be given if it is not the first time. It must be given as bytes
+        :return: It returns the encrypted data as bytes.
+        """
         key_ = self._get_system_key()
         hashed_key = hashlib.sha256()
         hashed_key.update(key_)
@@ -260,7 +285,14 @@ class Encryptor:
         tag = encryptor.tag
         return nonce_ + en_data + tag
 
-    def decrypt_system_data(self, en_data: bytes, nonce_len: int = 32):
+    def decrypt_system_data(self, en_data: bytes, nonce_len: int = 32) -> bytes:
+        """
+        This function decrypts system data which was encrypted with Encryptor.encrypt_system_data(data, nonce_len=32, nonce=None).
+
+        :param en_data: The data needs to be given as bytes.
+        :param nonce_len: The nonce_len is standardised at 32, but can be increased.
+        :return: It returns the decrypted data as bytes
+        """
         nonce_ = en_data[:nonce_len]
         data_and_tag = en_data[nonce_len:]
         key_ = self._get_system_key()
@@ -274,11 +306,12 @@ class Encryptor:
     @classmethod
     def validate_hash(cls, data: bytes, hash_: Union[bytes, str], hashing_algo) -> bool:
         """
+        In order to validate hashes use this function.
 
-        :param data:
-        :param hash_:
-        :param hashing_algo: from HashingAlgorithm
-        :return:
+        :param data: The data (e.g. the password, the data) which was hashed.
+        :param hash_: The hash. If it was not argon2id the hash should be given as bytes. If it is argon2id, it should be given as string.
+        :param hashing_algo: To know how to validate the hash, pass the hashing algorithm from HashingAlgorithm. You need to pass the function. E.g. pass HashingAlgorithm.argon2id and not HashingAlgorithm.argon2id()
+        :return: It returns True if it is the correct hash and False otherwise.
         """
 
         ret: Union[bytes, bool] = hashing_algo(data, hash_)
@@ -290,10 +323,11 @@ class Encryptor:
     @classmethod
     def hash_pw(cls, pw: bytes, hash_len=64) -> str:
         """
+        Passwords given into this function are hashed with argon2id.
 
-        :param pw: as b64
-        :param hash_len: as b64
-        :return: as b64
+        :param pw: The password needs to given as bytes
+        :param hash_len: The length of the hash is standardised at 64 bytes, but can vary.
+        :return: The function returns the hash as string.
         """
         ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=3, hash_len=hash_len)
         return ph.hash(pw)
@@ -301,6 +335,17 @@ class Encryptor:
     @classmethod
     def recreate_hash(cls, pw: bytes, salt: bytes,
                       time_cost: int = 3, memory_cost: int = 65536, parallelism: int = 3, hash_len: int = 64) -> str:
+        """
+        In order to recreate an argon2id hash you need to pass the password and salt as bytes. The hash_len needs to be correct. The rest can be changed, but should not.
+
+        :param pw: The password needs to be passed as bytes.
+        :param salt: The salt needs to be passed as bytes.
+        :param time_cost: default 3, can vary
+        :param memory_cost: default 65536, can vary
+        :param parallelism: default 3, can vary
+        :param hash_len: default 64 bytes, can vary
+        :return: It returns the hash as string.
+        """
         return hash_secret(
             secret=pw,
             salt=salt,
@@ -313,6 +358,11 @@ class Encryptor:
 
     @classmethod
     def create_private_key(cls) -> RSAPrivateKey:
+        """
+        This function creates the private key.
+
+        :return: It is returned as RSAPrivateKey
+        """
         return rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048,
@@ -320,6 +370,12 @@ class Encryptor:
 
     @classmethod
     def serialize_private_key(cls, private_key: RSAPrivateKey) -> bytes:
+        """
+        The private key needs to be serialized in order for it to be converted to bytes.
+
+        :param private_key: The private key as RSAPrivateKey
+        :return: The private key as bytes
+        """
         return private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
@@ -328,20 +384,50 @@ class Encryptor:
 
     @classmethod
     def deserialize_private_key(cls, pem_data: bytes) -> RSAPrivateKey:
+        """
+        This function deserializes the private key; it turns it from bytes to a RSAPrivateKey object.
+
+        :param pem_data: The private key as bytes
+        :return: It returns the private key as RSAPrivateKey object.
+        """
         return serialization.load_pem_private_key(
             pem_data,
             password=None
         )
 
+    @classmethod
+    def serialize_public_key(cls, public_key: RSAPublicKey) -> bytes:
+        """
+        The public key needs to be serialized in order for it to be converted to bytes.
+
+        :param public_key: The public key as RSAPrivateKey
+        :return: The public key as bytes
+        """
+        return public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.PKCS1
+        )
+
+    @classmethod
+    def deserialize_public_key(cls, pem_data: bytes) -> RSAPublicKey:
+        """
+        This function deserializes the public key; it turns it from bytes to a RSAPublicKey object.
+
+        :param pem_data: The public key as bytes
+        :return: It returns the public key as RSAPublicKey object.
+        """
+        return serialization.load_pem_public_key(pem_data)
+
     def encrypt_private_key(self, password: bytearray,
                             private_key: Optional[RSAPrivateKey] = None,
                             user_id: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
         """
+        This function encrypts the private key with Chacha20-Poly1305.
 
-        :param password:
-        :param private_key:
-        :param user_id:
-        :return: encrypted, salt, nonce
+        :param password: The password needs to be passed as bytearray. (bytearray(b"example"))
+        :param private_key: The private key can be passed. If not a new one will be generated. It needs to be passed as RSAPrivateKey object.
+        :param user_id: The user_id ... can be passed, but i dont think it should be. as bytes
+        :return: The funtion returns in the same order: The encrypted private key as bytes, the salt as bytes, the nonce as bytes.
         """
         if private_key is not None:
             private_key: bytes = self.serialize_private_key(private_key)
@@ -363,6 +449,17 @@ class Encryptor:
                             private_key: bytes,
                             nonce: bytes, salt: bytes,
                             user_id: Optional[bytes] = None) -> bytes:
+        """
+        This function decrypts the private key.
+
+
+        :param password: The password needs to be passed as bytearray. (bytearray(b"example"))
+        :param private_key: The private key as bytes
+        :param nonce: The nonce as bytes
+        :param salt: The salt as bytes
+        :param user_id: The user_id ... can be passed, but i dont think it should be. as bytes
+        :return: The private key as bytes. (it still needs to be deserialised)
+        """
         hash_pw = self.recreate_hash(bytes(password), salt, hash_len=32)
         hash_pw = hash_pw.split("$")
         key = Converter.b64_to_byte(hash_pw[-1])
@@ -372,6 +469,14 @@ class Encryptor:
     @classmethod
     @to_test
     def decrypt_rsa(cls, private_key: RSAPrivateKey, ciphertext: bytes, label: Optional[bytes] = None) -> bytes:
+        """
+        This function decrypts with the private key. Used for user data.
+
+        :param private_key: The private key as RSAPrivateKey
+        :param ciphertext: The text which needs to be decrypted as bytes
+        :param label: An optional label as bytes
+        :return: The decrypted text as bytes
+        """
         return private_key.decrypt(
             ciphertext,
             padding.OAEP(
