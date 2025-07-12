@@ -230,19 +230,27 @@ class Database:
         Returns:
         "id as b64",
         {
+
             "username": "b64",
+
             "salt_username": "b64",
+
             "nonce_username": "b64",
+
             "tag_username": "b64",
+
             "pw": "hash argon2id as utf8",
+
             "reference": "utf8",
+
             "validation": "sha256 b64"
+
         }
         :param user_id: The user_id needs to be given as b64 encoded string.
         :param username_utf: The username needs to be given as UTF-8 encoded string.
         :param password: The password needs to be given as a bytearray.
         :raises DatabankError: if user does not exist
-        :return: It returns in the the same order: user id as b64 string, dict as seen above.
+        :return: It returns in the same order: user id as b64 string, dict as seen above.
         """
         if username_utf is not None and password is not None:
             if not self.validate_user(username_utf, password):
@@ -257,11 +265,15 @@ class Database:
 
                 data["pw"] = Converter.b64_to_utf(data["pw"])
                 data["reference"] = Converter.b64_to_utf(data["reference"])
-
                 return id_, data
         elif user_id is not None:
-            all_users = self.get_all_users()
-            return user_id, all_users[user_id]
+            all_user = self.get_all_users()
+            for id_, data in all_user.items():
+                if id_ == user_id:
+                    data["reference"] = Converter.b64_to_utf(data["reference"])
+                    data["pw"] = Converter.b64_to_utf(data["pw"])
+                    return user_id, data
+
         raise DatabaseError(f"This User does not exist.")
 
     def get_reference(self, id_: str) -> str:
@@ -302,7 +314,6 @@ class Database:
         self._user_id = self.get_user(username_utf, password)[0]
         self._user_id_bytes = Converter.b64_to_byte(self._user_id)
 
-    @to_test
     def edit_user(self, field_to_change: Literal["username", "pw", "reference"], value: Union[str, bytearray],
                   username_utf: str = None, password: bytearray = None, id_: str = None):
         """
@@ -381,6 +392,17 @@ class Database:
     @to_test
     def _write_private_key(self, private_key: RSAPrivateKey, file: str, password: bytearray, user_id: bytes,
                            file_manager: Optional[FileManager] = None):
+        """
+        This method writes and encrypts the private key to a file.
+
+
+        :param private_key: The private key needs to be given as RSAPrivateKey object.
+        :param file: This is the file, where the private key is supposed to be saved as utf-8 string.
+        :param password: The password, with which the private key is encrypted, needs to be passed as bytearray.
+        :param user_id: The user_id needs to be given as bytes.
+        :param file_manager: If no file manager is passed, the default self._file_manager_reference will be used. (note: this means a force_directory will be enforced).
+        :return:
+        """
         if file_manager is None:
             file_manager = self._file_manager_reference
         enc_private, salt, nonce = self._encryptor.encrypt_private_key(password, private_key, user_id)
@@ -389,10 +411,11 @@ class Database:
     @to_test
     def _read_private_key(self, file: str, file_manager: Optional[FileManager] = None) -> tuple[str, str, str]:
         """
+        This method reads but does not decrypt the private key from a file.
 
-        :param file:
-        :param file_manager:
-        :return: salt, nonce, key | all as b64
+        :param file: The file where it is saved as utf-8 string.
+        :param file_manager: If no file manager is passed, the default self._file_manager_reference will be used. (note: this means a force_directory will be enforced).
+        :return: It returns in the same order: the salt as b64 string, the nonce as b64 string, the key as b64 string
         """
         if file_manager is None:
             file_manager = self._file_manager_reference
@@ -400,6 +423,12 @@ class Database:
 
     @to_test
     def _load_recovery_private_key(self, key: str) -> RSAPrivateKey:
+        """
+        This method lods the private key from the default recovery file using the recovery key.
+
+        :param key: The recovery key as b64 string.
+        :return: It returns the private key as RSAPrivateKey object.
+        """
         key = Converter.b64_to_byte(key)
         id_ = key[:self._id_len]
         id_ = Converter.byte_to_b64(id_)
@@ -416,6 +445,17 @@ class Database:
     @require_set_user
     @require_reference
     def load_private_key(self, password: bytearray) -> None:
+        """
+        This method loads the private key into the database._private_key.
+
+        Note this method requires:
+
+        - A set user
+        - A set reference
+
+        :param password: The password with which the private key is encrypted as bytearray
+        :return:
+        """
         salt, nonce, enc_priv = self._read_private_key(USER_PRIVATE_KEY_FILE_NAME)
         self._private_key = self._encryptor.decrypt_private_key(password, Converter.b64_to_byte(enc_priv),
                                                                 Converter.b64_to_byte(nonce),
@@ -429,11 +469,24 @@ class Database:
     @require_reference
     def create_private_key(self, password: bytearray) -> str:
         """
+        This method creates, encrypts and saves the private key.
+
         saved key layout = salt, nonce, enc_key
-        "user_key.k_hb"
-        "recovery_key.k_hb"
-        :param password:
-        :return:
+
+        In "user_key.k_hb" the private key is saved, which is encrypted with the user password.
+
+        In "recovery_key.k_hb" the private key is saved, which is encrypted with the recovery key.
+
+        Both are constants of this file.
+
+        Note this method requires:
+
+        - A set user
+
+        - A set reference
+
+        :param password: THe user password, with which the user private key is encrypted as bytearray.
+        :return: The recovery key as b64 string.
         """
         priv = self._encryptor.create_private_key()
         self._public_key = priv.public_key()
@@ -447,11 +500,27 @@ class Database:
     @to_test
     @require_private_key
     def delete_private_key(self):
+        """
+        This method deletes the private key.
+
+        Note this method requires:
+
+        - A set private key
+
+        :return:
+        """
         del self._private_key
         self._private_key = None
 
     @to_test
-    def recover_password(self, recovery_key: str, new_password: bytearray):
+    def recover_password(self, recovery_key: str, new_password: bytearray) -> str:
+        """
+        This method recovers the private key, if the user password was forgotten.
+
+        :param recovery_key: The recovery key needs to be given as b64 string.
+        :param new_password: The new password needs to be passed as bytearray.
+        :return: It returns the new recovery key as b64 string.
+        """
         private_key = self._load_recovery_private_key(recovery_key)
         id_ = Converter.b64_to_byte(recovery_key)[:self._id_len]
         id_ = Converter.byte_to_b64(id_)
@@ -466,12 +535,25 @@ class Database:
                                 file_manager)
         self.edit_user("pw", Converter.utf_to_b64(self._encryptor.hash_pw(bytes(new_password))))
 
-        return new_recovery_key
+        return Converter.byte_to_b64(new_recovery_key)
 
     @to_test
     @require_set_user
     @require_reference
     def change_password(self, old_password: bytearray, new_password: bytearray):
+        """
+        This method changes the user password.
+
+        Note the method requires:
+
+        - A set user
+
+        - A set reference
+
+        :param old_password: The old password needs to be passed as bytearray.
+        :param new_password: Th new password needs to be passed as bytearray.
+        :return:
+        """
         salt, nonce, enc_private = self._read_private_key(USER_PRIVATE_KEY_FILE_NAME)
         private_key = self._encryptor.decrypt_private_key(old_password, Converter.b64_to_byte(enc_private),
                                                           Converter.b64_to_byte(nonce), Converter.b64_to_byte(salt),
@@ -484,6 +566,18 @@ class Database:
     @require_private_key
     @require_reference
     def _read_ej(self, path: str) -> dict:
+        """
+        This method reads encryptes json files (.ej).
+
+        Note this method requires:
+
+        - A set private key
+
+        - A set reference
+
+        :param path: The path to the encryptes json needs to be passed as utf-8 string.
+        :return: It returns the decrypted json as dictionary.
+        """
         header, enc_dict = self._file_manager_reference.read(
             path,
             header_len=256
@@ -513,6 +607,21 @@ class Database:
     @require_reference
     @require_public_key
     def _write_ej(self, path: str, data: dict, key: Optional[bytes] = None, nonce: Optional[bytes] = None) -> None:
+        """
+        This method writes encrypted json files (.ej).
+
+        Note this method requires:
+
+        - A set reference
+
+        - A set public key
+
+        :param path: The path needs to be given as utf-8 string.
+        :param data: The data needs to be given as a dictionary.
+        :param key: The key is optional and can be given as bytes.
+        :param nonce: The nonce is optional and can be given as bytes.
+        :return: nothing.
+        """
         data = json.dumps(data)
         data = data.encode()
         key, nonce, enc_data = self._encryptor.encrypt_chacha20(data, key=key, nonce=nonce)
@@ -526,6 +635,18 @@ class Database:
     @require_reference
     @require_private_key
     def get_all_trade_entities(self) -> dict:
+        """
+        This method returns all the trade entities of the user.
+
+        Note this method requires:
+
+        - A set reference
+
+        - A set private key
+
+        :return: It returns all trade entities as a dictionary.
+        Defined in permanent_storage/test/user_data/templates/trade_entities.ej
+        """
         return self._read_ej("trade_entities.ej")
 
     @TODO
