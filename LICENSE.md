@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2025 SirMrManuel0, WittoCMD
+Copyright (c) 2025 SirMrManuel0, FishAndChips231
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
