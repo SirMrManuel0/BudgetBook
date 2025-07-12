@@ -489,6 +489,14 @@ class Encryptor:
     @classmethod
     @to_test
     def encrypt_rsa(cls, public_key: RSAPublicKey, plaintext: bytes, label: Optional[bytes] = None) -> bytes:
+        """
+        This function encrypts with the private key. Used for user data.
+
+        :param public_key: The private key as RSAPublicKey
+        :param plaintext: The text which needs to be encrypted as bytes
+        :param label: An optional label as bytes
+        :return: The encrypted text as bytes
+        """
         return public_key.encrypt(
             plaintext,
             padding.OAEP(
@@ -502,6 +510,15 @@ class Encryptor:
     @to_test
     def decrypt_chacha20(cls, key: bytes, nonce: bytes, encrypted_data: bytes,
                          authenticated: Optional[bytes] = None) -> bytes:
+        """
+        This function decrypts ciphertext, which was encrypted with ChaCha20-Poly1305.
+
+        :param key: The key needs to be given as bytes.
+        :param nonce: The nonce must be given as bytes.
+        :param encrypted_data: the encrypted_data needs to be given as bytes.
+        :param authenticated: An optional piece of data, which is authenticated, but not encrypted, needs to be given as bytes.
+        :return: The decrypted plaintext as bytes.
+        """
         return ChaCha20Poly1305(key).decrypt(nonce, encrypted_data, authenticated)
 
     @classmethod
@@ -509,12 +526,13 @@ class Encryptor:
     def encrypt_chacha20(cls, clear_text: bytes, authenticated: Optional[bytes] = None,
                          nonce: Optional[bytes] = None, key: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
         """
+        This function encrypts plaintext with ChaCha20-Poly1305.
 
-        :param clear_text:
-        :param authenticated:
-        :param nonce:
-        :param key:
-        :return: key, nonce, encrypted
+        :param clear_text: The clear_text needs to be given as bytes.
+        :param authenticated: The optional authenticated data needs to be given as bytes.
+        :param nonce: The optional nonce needs to be given as bytes.
+        :param key: The key needs to be given as bytes.
+        :return: This function returns in the same order as bytes: the key, the nonce, the encrypted data.
         """
         if nonce is None:
             nonce = secrets.token_bytes(24)
