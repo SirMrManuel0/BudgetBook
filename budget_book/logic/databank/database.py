@@ -8,9 +8,9 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from pylix.errors import TODO, to_test
-from typing import Optional
+from typing import Optional, Literal, Union
 
-from budget_book.errors.errors import CorruptionError, DatabankError
+from budget_book.errors.errors import CorruptionError, DatabaseError
 from budget_book.logic.databank import Encryptor
 from budget_book.logic.databank.encryptor import Converter, HashingAlgorithm
 from budget_book.logic.databank.file_manager import FileManager
@@ -20,33 +20,57 @@ from budget_book.path_manager import get_path_abs
 # User lookup file: up/up.hb | nonce len: 32 | validation hash sha512 (64 bytes)
 
 def require_reference(func):
+    """
+    A decorator to enforce a state.
+
+    :param func:
+    :return:
+    """
     def wrapper(self, *args, **kwargs):
         if self._reference == "":
-            raise DatabankError("A reference needs to be given for this action.")
+            raise DatabaseError("A reference needs to be given for this action.")
         return func(self, *args, **kwargs)
 
     return wrapper
 
 def require_set_user(func):
+    """
+    A decorator to enforce a state.
+
+    :param func:
+    :return:
+    """
     def wrapper(self, *args, **kwargs):
         if self._user_id is None:
-            raise DatabankError("A user needs to be set for this action.")
+            raise DatabaseError("A user needs to be set for this action.")
         return func(self, *args, **kwargs)
 
     return wrapper
 
 def require_private_key(func):
+    """
+    A decorator to enforce a state.
+
+    :param func:
+    :return:
+    """
     def wrapper(self, *args, **kwargs):
         if self._private_key is None:
-            raise DatabankError("The private key is needed.")
+            raise DatabaseError("The private key is needed.")
         return func(self, *args, **kwargs)
 
     return wrapper
 
 def require_public_key(func):
+    """
+    A decorator to enforce a state.
+
+    :param func:
+    :return:
+    """
     def wrapper(self, *args, **kwargs):
         if self._public_key is None:
-            raise DatabankError("The public key is needed.")
+            raise DatabaseError("The public key is needed.")
         return func(self, *args, **kwargs)
 
     return wrapper
@@ -56,8 +80,13 @@ USER_PRIVATE_KEY_FILE_NAME: str = "user_key.k_hb"
 RECOVERY_PRIVATE_KEY_FILE_NAME: str = "recovery_key.k_hb"
 
 
-class Databank:
+class Database:
     def __init__(self, test=False, reference=""):
+        """
+
+        :param test: If you create tests, set this True.
+        :param reference:  If you already know the users reference, set it here.
+        """
         self._permanent_storage = get_path_abs("../permanent_storage/deploy/") \
             if not test else get_path_abs("../permanent_storage/test/")
         self._encryptor = Encryptor(test)
@@ -72,7 +101,15 @@ class Databank:
         self._user_id_bytes: Optional[bytes] = None
         self._id_len: int = 4
 
-    def add_user(self, username_utf: str, password: bytearray, reference: str):
+    def add_user(self, username_utf: str, password: bytearray, reference: str) -> None:
+        """
+        Create a new user.
+
+        :param username_utf: The username as a string in the UTF-8 encoding.
+        :param password: The password as a bytearray.
+        :param reference: The reference to the users key as UTF-8 string. e.g. "path/to/the/key"
+        :return: no return
+        """
         content_dict = self.get_all_users()
 
         en_username, nonce_, tag, salt_ = self._encryptor.encrypt_username(username_utf.encode())
@@ -116,6 +153,11 @@ class Databank:
         self._file_manager_ps.write(file_path="up/up.hb", data=en_content + hash_)
 
     def get_all_users(self) -> dict:
+        """
+        To get all the users. No parameter.
+        It returns the dictionary as defined in permanent_storage/test/up/up.hb.template
+        :return:
+        """
         en_content, hash_ = self._file_manager_ps.read(file_path="up/up.hb", validator_len=64)
         content_dict = dict()
         if not (len(en_content) == 0 and len(hash_) == 0):
@@ -133,6 +175,13 @@ class Databank:
             return dict()
 
     def validate_user(self, username_utf: str, password: bytearray) -> bool:
+        """
+        This method validates a user; testing if the user exists.
+
+        :param username_utf: The username needs to be given as a string in the UTF-8 encoding.
+        :param password: The password needs to be given as bytearray
+        :return: it returns True, if the user exists
+        """
         users: dict = self.get_all_users()
         username_bytes: bytes = username_utf.encode()
 
@@ -144,6 +193,15 @@ class Databank:
         return is_user
 
     def test_user(self, user_candidate: dict, username_bytes: bytes, password: bytearray) -> bool:
+        """
+        This method should mostly only be called within Databank.
+        It tests whether the given candidate fits the password and username.
+
+        :param user_candidate: The candidate needs to be given in a dict as defined in permanent_storage/test/up/up.hb.template
+        :param username_bytes: The username needs to be passed in bytes.
+        :param password: The password needs to be passed as a bytearray
+        :return: It returns True, if the user fits.
+        """
         name_candidate: bytes = Converter.b64_to_byte(user_candidate["username"])
         u_key, _ = self._encryptor.generate_username_key(username_bytes,
                                                          Converter.b64_to_byte(user_candidate["salt_username"]))
@@ -166,6 +224,9 @@ class Databank:
 
     def get_user(self, username_utf: str = None, password: bytearray = None, user_id: str = None) -> tuple[str, dict]:
         """
+        The method needs to be given the username as a string in UTF-8 encoding and password as bytearray
+        or only the user_id as string in b64 encoding.
+
         Returns:
         "id as b64",
         {
@@ -177,15 +238,15 @@ class Databank:
             "reference": "utf8",
             "validation": "sha256 b64"
         }
-        :param user_id:
-        :param username_utf:
-        :param password:
+        :param user_id: The user_id needs to be given as b64 encoded string.
+        :param username_utf: The username needs to be given as UTF-8 encoded string.
+        :param password: The password needs to be given as a bytearray.
         :raises DatabankError: if user does not exist
-        :return:
+        :return: It returns in the the same order: user id as b64 string, dict as seen above.
         """
         if username_utf is not None and password is not None:
             if not self.validate_user(username_utf, password):
-                raise DatabankError(f"This User '{username_utf}' does not exist.")
+                raise DatabaseError(f"This User '{username_utf}' does not exist.")
 
             username_bytes: bytes = username_utf.encode()
             users: dict = self.get_all_users()
@@ -201,13 +262,14 @@ class Databank:
         elif user_id is not None:
             all_users = self.get_all_users()
             return user_id, all_users[user_id]
-        raise DatabankError(f"This User does not exist.")
+        raise DatabaseError(f"This User does not exist.")
 
     def get_reference(self, id_: str) -> str:
         """
+        This method returns the reference of an id.
 
-        :param id_: as b64
-        :return: as b64
+        :param id_: The id needs to be passed as a b64 string.
+        :return: The reference is returned as a b64 string.
         """
         dict_: dict = self.get_all_users()
         return Converter.b64_to_utf(dict_[id_]["reference"])
@@ -216,32 +278,87 @@ class Databank:
         """
         The reference is the folder where the key.k_hb is stored.
 
-        :param reference: as utf
-        :param id_: as b64
-        :return:
+        This method sets the reference of the Database
+
+        :param reference: The reference needs to be passed as an UTF-8 string.
+        :param id_: The id needs to be passed as a b64 string.
+        :return: It returns nothing.
         """
         if id_ is not None or reference is not None:
             self._reference = self.get_reference(id_) if id_ is not None else reference
             self._file_manager_reference.force_directory_path = self._reference
         else:
-            raise DatabankError("A reference or id needs to be given.")
+            raise DatabaseError("A reference or id needs to be given.")
 
-    def set_user(self, username_utf: str, password: bytearray):
+    def set_user(self, username_utf: str, password: bytearray) -> None:
+        """
+        This function sets the user_id of the Database.
+
+        :param username_utf: The username needs to be passed as an UTF-8 string.
+        :param password: The password needs to be passed as a bytearray.
+        :return:
+        """
         self.validate_user(username_utf, password)
         self._user_id = self.get_user(username_utf, password)[0]
         self._user_id_bytes = Converter.b64_to_byte(self._user_id)
 
+    @to_test
+    def edit_user(self, field_to_change: Literal["username", "pw", "reference"], value: Union[str, bytearray],
+                  username_utf: str = None, password: bytearray = None, id_: str = None):
+        """
+        This method edits a user. It either needs the username as utf-8 string and the password or the id.
 
-    def edit_user(self, field_to_change: str, value, username_utf: str = None, password: bytearray = None,
-                  id_: str = None):
+        Only the password, the reference and the username can be changed.
+        If the password is changed, a bytearray needs to be passed, otherwise a string;
+        the username and the reference should be UTF-8 strings.
+
+        IMPORTANT:
+        EDITING THE PASSWORD HERE, WILL NOT CHANGE THE PASSWORD WHICH ENCRYPTS THE PRIVATE KEY.
+        THIS NEEDS TO BE DONE THROUGH THE METHOD Database.change_password.
+
+        :param field_to_change: username, pw or reference
+        :param value: if password, bytearray, else utf-8 string
+        :param username_utf: This needs to be passed as an utf-8 string
+        :param password: This needs to be passed as a bytearray
+        :param id_: This needs to be passed as an b64 string
+        :return:
+        """
         all_user = self.get_all_users()
+        user_salt = None
+        user_nonce = None
+        user_tag = None
+
+        if field_to_change == "username":
+            if not isinstance(value, str):
+                raise DatabaseError("To change the username an utf-8 string needs to be passed.")
+            value, user_nonce, user_tag, user_salt = self._encryptor.encrypt_username(value.encode())
+            value, user_nonce = Converter.byte_to_b64(value), Converter.byte_to_b64(user_nonce)
+            user_tag, user_salt = Converter.byte_to_b64(user_tag), Converter.byte_to_b64(user_salt)
+        elif field_to_change == "pw":
+            if not isinstance(value, bytearray):
+                raise DatabaseError("To change the password a bytearray needs to be passed as value.")
+            value = bytes(value)
+            hashed = self._encryptor.hash_pw(value)
+            value = Converter.utf_to_b64(hashed)
+        elif field_to_change == "reference":
+            value = Converter.utf_to_b64(value)
+        else:
+            raise DatabaseError("The method Database.edit_user only accepts username, pw or reference to change.")
+
         if id_ is not None:
-            all_user[id_][field_to_change] = value
+            ...
         elif username_utf is not None and password is not None:
             id_, user = self.get_user(username_utf, password)
-            all_user[id_][field_to_change] = value
         else:
-            raise DatabankError("username and password or id_ needs to be given.")
+            raise DatabaseError("username and password or id_ needs to be given.")
+
+        if field_to_change == "username":
+            all_user[id_]["username"] = value
+            all_user[id_]["salt_username"] = user_salt
+            all_user[id_]["nonce_username"] = user_nonce
+            all_user[id_]["tag_username"] = user_tag
+        else:
+            all_user[id_][field_to_change] = value
 
         valid_ = hashlib.sha256()
         valid_.update(Converter.b64_to_byte(all_user[id_]["salt_username"]))
@@ -361,7 +478,7 @@ class Databank:
                                                           self._user_id_bytes)
         private_key = self._encryptor.deserialize_private_key(private_key)
         self._write_private_key(private_key, USER_PRIVATE_KEY_FILE_NAME, new_password, self._user_id_bytes)
-        self.edit_user("pw", Converter.utf_to_b64(self._encryptor.hash_pw(bytes(new_password))))
+        self.edit_user("pw", new_password)
 
     @to_test
     @require_private_key

@@ -6,7 +6,7 @@ from trace import CoverageResults
 import pytest
 
 from budget_book.logic.databank import Encryptor
-from budget_book.logic.databank.databank import Databank
+from budget_book.logic.databank.database import Database
 from budget_book.logic.databank.encryptor import Converter, HashingAlgorithm
 from budget_book.logic.databank.file_manager import FileManager
 from budget_book.path_manager import get_path_abs
@@ -18,7 +18,7 @@ def test_add_user():
     with open("permanent_storage/test/up/up.hb", "wb") as f:
         f.write(b"")
 
-    databank: Databank = Databank(True)
+    databank: Database = Database(True)
     users_to_add: list[tuple[str, bytearray, str]] = [
         ("Thomas Erdbeere", bytearray(b"SuperSicher"), "permanent_storage"),
         ("Valerie Dino", bytearray(b"SichererGehtEs Nicht <3"), "permanent_storage"),
@@ -44,7 +44,7 @@ def test_get_all_user():
     with open("permanent_storage/test/up/up.hb", "wb") as f:
         f.write(b"")
 
-    databank: Databank = Databank(True)
+    databank: Database = Database(True)
     users_to_add: list[tuple[str, bytearray, str]] = [
         ("Thomas Erdbeere", bytearray(b"SuperSicher"), "permanent_storage"),
         ("Valerie Dino", bytearray(b"SichererGehtEs Nicht <3"), "permanent_storage"),
@@ -73,7 +73,7 @@ def test_validate_user():
     with open("permanent_storage/test/up/up.hb", "wb") as f:
         f.write(b"")
 
-    databank: Databank = Databank(True)
+    databank: Database = Database(True)
     users_to_add: list[tuple[str, bytearray, str]] = [
         ("Thomas Erdbeere", bytearray(b"SuperSicher"), "permanent_storage"),
         ("Valerie Dino", bytearray(b"SichererGehtEs Nicht <3"), "permanent_storage"),
@@ -95,7 +95,7 @@ def test_get_user():
     with open("permanent_storage/test/up/up.hb", "wb") as f:
         f.write(b"")
 
-    databank: Databank = Databank(True)
+    databank: Database = Database(True)
     users_to_add: list[tuple[str, bytearray, str]] = [
         ("Thomas Erdbeere", bytearray(b"SuperSicher"), "permanent_storage"),
         ("Valerie Dino", bytearray(b"SichererGehtEs Nicht <3"), "permanent_storage"),
@@ -123,7 +123,7 @@ def test_get_reference():
     with open("permanent_storage/test/up/up.hb", "wb") as f:
         f.write(b"")
 
-    databank: Databank = Databank(True)
+    databank: Database = Database(True)
     users_to_add: list[tuple[str, bytearray, str]] = [
         ("Thomas Erdbeere", bytearray(b"SuperSicher"), "permanent_storage"),
         ("Valerie Dino", bytearray(b"SichererGehtEs Nicht <3"), "permanent_storage/deploy"),
@@ -146,7 +146,7 @@ def test_edit_user():
     with open("permanent_storage/test/up/up.hb", "wb") as f:
         f.write(b"")
 
-    databank: Databank = Databank(True)
+    databank: Database = Database(True)
     users_to_add: list[tuple[str, bytearray, str]] = [
         ("Thomas Erdbeere", bytearray(b"SuperSicher"), "permanent_storage"),
         ("Valerie Dino", bytearray(b"SichererGehtEs Nicht <3"), "permanent_storage/deploy"),

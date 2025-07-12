@@ -327,7 +327,7 @@ class Encryptor:
 
         :param pw: The password needs to given as bytes
         :param hash_len: The length of the hash is standardised at 64 bytes, but can vary.
-        :return: The function returns the hash as string.
+        :return: The function returns the hash as utf-8 string.
         """
         ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=3, hash_len=hash_len)
         return ph.hash(pw)
