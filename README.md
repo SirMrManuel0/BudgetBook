@@ -30,8 +30,12 @@ On Windows:
 
 Unpack the source code and execute:
 ```
-python main.py --mode server
+python main.py --mode server --ip 127.0.0.1 --port 8080
 ```
+
+The default ip is 127.0.0.1 (localhost).
+
+The default port is 8080.
 
 ### ii. Local
 
