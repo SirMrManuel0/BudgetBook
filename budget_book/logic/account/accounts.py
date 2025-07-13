@@ -2,7 +2,7 @@ import uuid
 from typing import Iterable
 from pylix.errors import TODO
 
-from budget_book.logic.databank.tag import Tag
+from budget_book.logic.database.tag import Tag
 from budget_book.logic.account.transactions import RepetitionObject
 from budget_book.logic.user import User
 

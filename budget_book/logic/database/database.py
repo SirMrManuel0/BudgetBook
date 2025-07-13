@@ -11,9 +11,9 @@ from pylix.errors import TODO, to_test
 from typing import Optional, Literal, Union
 
 from budget_book.errors.errors import CorruptionError, DatabaseError
-from budget_book.logic.databank import Encryptor
-from budget_book.logic.databank.encryptor import Converter, HashingAlgorithm
-from budget_book.logic.databank.file_manager import FileManager
+from budget_book.logic.database import Encryptor
+from budget_book.logic.database.encryptor import Converter, HashingAlgorithm
+from budget_book.logic.database.file_manager import FileManager
 from budget_book.path_manager import get_path_abs
 
 

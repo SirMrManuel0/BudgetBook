@@ -2,7 +2,7 @@ import os.path
 from typing import Optional, Union
 
 from budget_book.errors import PathError
-from budget_book.logic.databank.encryptor import Converter
+from budget_book.logic.database.encryptor import Converter
 from budget_book.path_manager import get_path_abs
 
 class FileManager:

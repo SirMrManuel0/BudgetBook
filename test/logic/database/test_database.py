@@ -5,10 +5,10 @@ from trace import CoverageResults
 
 import pytest
 
-from budget_book.logic.databank import Encryptor
-from budget_book.logic.databank.database import Database
-from budget_book.logic.databank.encryptor import Converter, HashingAlgorithm
-from budget_book.logic.databank.file_manager import FileManager
+from budget_book.logic.database import Encryptor
+from budget_book.logic.database.database import Database
+from budget_book.logic.database.encryptor import Converter, HashingAlgorithm
+from budget_book.logic.database.file_manager import FileManager
 from budget_book.path_manager import get_path_abs
 
 

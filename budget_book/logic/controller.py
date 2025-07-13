@@ -1,6 +1,6 @@
 from typing import Optional
 
-from budget_book.logic.databank.database import Database
+from budget_book.logic.database.database import Database
 from budget_book.logic.user import User
 
 
