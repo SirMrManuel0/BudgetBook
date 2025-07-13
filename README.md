@@ -1,11 +1,12 @@
 # BudgetBook
-1. How to use
-   1. Server
-   2. Local
-2. Features
-3. Security
-4. Errors
-5. Contributions
+1. [How to use](#1-how-to-use)
+   1. [Server](#i-server)
+   2. [Local](#ii-local)
+2. [Features](#2-features)
+3. [Security](#3-security)
+4. [Errors](#4-errors)
+5. [Contributions](#5-contributions)
+6. [License](#6-license)
 
 
 ## 1. How to use
@@ -22,20 +23,46 @@ To use it install the latest release. There should be a server.exe and local.exe
 
 ### i. Server
 
+On Windows:
+
 1. Install the latest release
 2. execute the server.exe or:
 
 Unpack the source code and execute:
 ```
-python main.py server
+python main.py --mode server
 ```
 
-### ii. Client
+### ii. Local
+
+On Windows:
 
 1. Install the latest release
 2. execute the client.exe or:
 
 Unpack the source code and execute:
 ```
-python main.py client
+python main.py --mode local
 ```
+
+## 2. Features
+
+1. Backups
+2. Analytics
+
+## 3. Security
+
+1. RSA
+2. AES-GCM
+3. ChaCha20-Poly1305
+
+## 4. Errors
+
+## 5. Contributions
+
+1. SirMrManuel0
+2. FishAndChips231
+
+## 6. License
+
+[MIT-License](LICENSE.md)
