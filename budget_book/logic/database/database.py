@@ -78,6 +78,7 @@ def require_public_key(func):
 
 USER_PRIVATE_KEY_FILE_NAME: str = "user_key.k_hb"
 RECOVERY_PRIVATE_KEY_FILE_NAME: str = "recovery_key.k_hb"
+TRADE_ENTITIES_FILE_NAME: str = "trade_entities.ej"
 
 
 class Database:
@@ -647,26 +648,52 @@ class Database:
         :return: It returns all trade entities as a dictionary.
         Defined in permanent_storage/test/user_data/templates/trade_entities.ej
         """
-        return self._read_ej("trade_entities.ej")
+        return self._read_ej(TRADE_ENTITIES_FILE_NAME)
 
-    @TODO
     @to_test
     @require_reference
     @require_private_key
-    def add_trade_entities(self, name: str, kind: Optional[str] = None,
-                           description: Optional[str] = None, relationship: Optional[str] = None,
-                           iban: Optional[str] = None, tags: Optional[list] = None) -> None:
+    def add_trade_entity(self, name: str, kind: Optional[str] = None,
+                         description: Optional[str] = None, relationship: Optional[str] = None,
+                         iban: Optional[str] = None, tags: Optional[list] = None) -> None:
+        """
+        This method adds a trading entity to the database.
+
+        Note this method requires:
+
+        - A set reference
+
+        - A set private key
+
+
+        :param name: The name of the trading entity has to be passed as an UTF-8 encoded string.
+        :param kind: The kind of the trading entity has to be passed as an UTF-8 encoded string.
+        :param description: The description has to be passed as an UTF-8 encoded string.
+        :param relationship: The relationship has to be passed as an UTF-8 encoded string.
+        :param iban: The iban should be passed as an UTF-8 encoded string.
+        :param tags: The tags should be passed as a list of tag objects.
+        :return:
+        """
         all_ = self.get_all_trade_entities()
         new_id: int = -1
         for key in all_.keys():
-            new_id = max(new_id, key)
+            new_id = max(new_id, Converter.b64_to_int(key, False))
         new_id += 1
         new_id_b64: str = Converter.int_to_b64(new_id, False)
+
+        new_iban = ""
+        for c in iban:
+            if c == "":
+                continue
+            new_iban += c
+
         all_[new_id_b64] = {
             "name": Converter.utf_to_b64(name),
             "description": Converter.utf_to_b64(description) if description is not None else "",
             "kind": Converter.utf_to_b64(kind) if kind is not None else "",
             "relationship": Converter.utf_to_b64(relationship) if relationship is not None else "",
-            "iban": iban if iban is not None else "",
+            "iban": Converter.utf_to_b64(new_iban) if new_iban is not None else "",
             "tags": tags if tags is not None else list()
         }
+
+        self._write_ej(TRADE_ENTITIES_FILE_NAME, all_)
