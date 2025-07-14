@@ -1,7 +1,7 @@
 import hashlib
 
 import pytest
-from budget_book.logic.databank.encryptor import Encryptor, Converter, HashingAlgorithm
+from budget_book.logic.database.encryptor import Encryptor, Converter, HashingAlgorithm
 
 
 @pytest.mark.parametrize(

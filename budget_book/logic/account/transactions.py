@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Iterable, Optional
 
-from budget_book.logic.databank.tag import Tag
+from budget_book.logic.database.tag import Tag
 
 
 class Transaction:

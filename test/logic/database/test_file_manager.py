@@ -1,8 +1,8 @@
 import os.path
 import hashlib
 
-from budget_book.logic.databank.encryptor import Converter
-from budget_book.logic.databank.file_manager import FileManager
+from budget_book.logic.database.encryptor import Converter
+from budget_book.logic.database.file_manager import FileManager
 
 
 def test__path_setter():
