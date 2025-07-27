@@ -2,3 +2,4 @@
 .idea/
 permanent_storage/deploy/
 backups/
+*/__pycache__/*
