@@ -31,15 +31,17 @@ jobs:
       - name: Add cargo to PATH
         run: echo "${HOME}/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Upgrade pip and install build tools
-        run: |
-          python -m pip install --upgrade pip setuptools-rust wheel
+      - name: Install cibuildwheel
+        run: python -m pip install --upgrade pip cibuildwheel
 
-      - name: Build wheel
-        run: python setup.py bdist_wheel
+      - name: Build wheels with cibuildwheel
+        env:
+          CIBW_BUILD: "cp312-* cp313-*"
+          CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
+        run: cibuildwheel --output-dir wheelhouse
 
       - name: Upload wheels
         uses: actions/upload-artifact@v3
         with:
           name: wheels-macos-${{ matrix.python-version }}
-          path: dist/*.whl
+          path: wheelhouse/*.whl
