@@ -41,11 +41,9 @@ jobs:
           CIBW_BUILD: "cp312-manylinux_* cp313-manylinux_*"
           CIBW_BEFORE_ALL: "curl https://sh.rustup.rs -Sf | sh -s -- -y"
           CIBW_BEFORE_BUILD: |
-            echo "PATH=$PATH"
             . $HOME/.cargo/env
             command -v cargo
-            mv "$HOME/.cargo/bin/cargo" $PATH
-            mv "/root/.cargo/bin/cargo" $PATH
+            echo "PATH=$PATH"
           CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
         run: |
           cibuildwheel --output-dir wheelhouse
