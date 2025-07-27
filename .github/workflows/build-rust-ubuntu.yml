@@ -44,8 +44,8 @@ jobs:
             echo "PATH=$PATH"
             . $HOME/.cargo/env
             command -v cargo
-            cp "$HOME/.cargo/bin" >> $PATH
-            cp "/root/.cargo/bin" >> $PATH
+            cp "$HOME/.cargo/bin/cargo" "$PATH/cargo"
+            cp "/root/.cargo/bin/cargo" "$PATH/cargo"
           CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
         run: |
           cibuildwheel --output-dir wheelhouse
