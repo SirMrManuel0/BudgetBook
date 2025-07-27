@@ -13,5 +13,3 @@ license = {text = "MIT"}
 
 [tool.maturin]
 bindings = "pyo3"
-manylinux = "on"
-strip = true
