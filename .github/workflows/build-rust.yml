@@ -36,9 +36,9 @@ jobs:
 
       - name: Build wheels with cibuildwheel
         env:
-          CIBW_SKIP: "pp* cp27-* cp35-* cp36-*"  # skip very old Python versions to speed up build
+          CIBW_SKIP: "pp* cp27-* cp35-* cp36-* cp37-* cp38-* cp39-* cp310-* cp311-*"
           CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
-          CIBW_BUILD: "cp310-* cp311-*"           # build only Python 3.10 and 3.11
+          CIBW_BUILD: "cp310-* cp311-*"
           CIBW_TEST_REQUIRES: "pytest"
         run: |
           cibuildwheel --output-dir wheelhouse
