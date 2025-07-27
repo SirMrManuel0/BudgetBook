@@ -41,9 +41,8 @@ jobs:
           CIBW_BUILD: "cp312-manylinux_* cp313-manylinux_*"
           CIBW_BEFORE_ALL: "curl https://sh.rustup.rs -Sf | sh -s -- -y"
           CIBW_BEFORE_BUILD: |
+            echo "PATH=$PATH"
             . $HOME/.cargo/env
-            command -v cargo
-            echo ". $HOME/.cargo/env" >> "$PATH"
             command -v cargo
           CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
         run: |
