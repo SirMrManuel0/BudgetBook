@@ -44,6 +44,10 @@ jobs:
             echo "PATH=$PATH"
             . $HOME/.cargo/env
             command -v cargo
+            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+            echo "/root/.cargo/bin" >> $GITHUB_PATH
+            echo "$HOME/.cargo/bin" >> $PATH
+            echo "/root/.cargo/bin" >> $PATH
           CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
         run: |
           cibuildwheel --output-dir wheelhouse
