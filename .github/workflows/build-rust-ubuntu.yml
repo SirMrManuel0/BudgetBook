@@ -43,6 +43,8 @@ jobs:
           CIBW_BEFORE_BUILD: |
             . $HOME/.cargo/env
             command -v cargo
+            echo ". $HOME/.cargo/env" >> $GITHUB_ENV
+            command -v cargo
           CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
         run: |
           cibuildwheel --output-dir wheelhouse
