@@ -7,11 +7,12 @@ on:
 
 jobs:
   build-wheels:
-    runs-on: ubuntu-latest
-
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: [3.12, 3.13]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -26,13 +27,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install maturin==0.13.6 cibuildwheel
 
-      - name: Build and publish wheels
+      - name: Build wheels
         run: |
-          # Build wheels with cibuildwheel (manylinux enabled by default)
           cibuildwheel --output-dir wheelhouse
 
       - name: Upload wheels artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wheels
+          name: wheels-${{ matrix.os }}-py${{ matrix.python-version }}
           path: wheelhouse/*.whl
