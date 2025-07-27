@@ -38,7 +38,9 @@ jobs:
         env:
           CIBW_BUILD: "cp312-* cp313-*"
           CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
-          CIBW_BEFORE_BUILD: "curl https://sh.rustup.rs -sSf | sh -s -- -y && source $HOME/.cargo/env"
+          CIBW_BEFORE_BUILD: |
+            curl https://sh.rustup.rs -sSf | sh -s -- -y
+            source $HOME/.cargo/env
         run: cibuildwheel --output-dir wheelhouse
 
       - name: Upload wheels
