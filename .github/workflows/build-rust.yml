@@ -35,12 +35,12 @@ jobs:
           cargo --version || echo "cargo not found"
 
       - name: Add Cargo to PATH
+        if: runner.os != 'windows-latest'
         run: echo "##[add-path]$HOME/.cargo/bin"
-        if: runner.os != 'Windows'
 
       - name: Add Cargo to PATH Windows
+        if: runner.os == 'windows-latest'
         run: echo "##[add-path]%USERPROFILE%\\.cargo\\bin"
-        if: runner.os == 'Windows'
 
       - name: Install cibuildwheel
         run: |
