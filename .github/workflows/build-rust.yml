@@ -38,7 +38,7 @@ jobs:
         env:
           CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
           CIBW_BUILD: "cp312-* cp313-*"
-          CIBW_TEST_REQUIRES: "pytest"
+          CIBW_LOG_LEVEL: "DEBUG"
         run: |
           cibuildwheel --output-dir wheelhouse
 
