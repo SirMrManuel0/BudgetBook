@@ -40,16 +40,12 @@ jobs:
         env:
           CIBW_BUILD: "cp312-manylinux_* cp313-manylinux_*"
           CIBW_BEFORE_ALL_LINUX: |
-            curl https://sh.rustup.rs -Sf | sh -s -- -y
-            . $HOME/.cargo/env
-            command -v cargo
-            echo "PATH=$PATH"
-          CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
-        run: |
-          curl https://sh.rustup.rs -Sf | sh -s -- -y
-          . $HOME/.cargo/env
-          command -v cargo
-          cibuildwheel --output-dir wheelhouse
+            curl https://sh.rustup.rs -sSf | sh -s -- -y
+            source $HOME/.cargo/env
+            echo "Installed cargo: $(command -v cargo)"
+            cargo --version
+          run: "cibuildwheel --output-dir wheelhouse"
+          #CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
