@@ -1,0 +1,38 @@
+name: Build Rust Python Wheels
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-wheels:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [3.12, 3.13]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install maturin and cibuildwheel
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin==0.13.6 cibuildwheel
+
+      - name: Build and publish wheels
+        run: |
+          # Build wheels with cibuildwheel (manylinux enabled by default)
+          cibuildwheel --output-dir wheelhouse
+
+      - name: Upload wheels artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: wheels
+          path: wheelhouse/*.whl
