@@ -1,50 +1,40 @@
-name: Build wheels on Ubuntu
+name: Build Linux wheels
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
   pull_request:
     branches: [master]
 
 jobs:
-  build-wheels:
+  linux-wheels:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.12, 3.13]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-
-      - name: Add cargo to PATH
-        run: echo "${HOME}/.cargo/bin" >> $GITHUB_PATH
+          python-version: '3.12'  # needed for cibuildwheel runner
 
       - name: Install cibuildwheel
-        run: python -m pip install --upgrade pip cibuildwheel
+        run: |
+          python -m pip install --upgrade pip
+          pip install cibuildwheel
 
       - name: Build wheels with cibuildwheel
         env:
-          CIBW_BUILD: "cp312-* cp313-*"
-          CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
-          CIBW_BEFORE_BUILD: |
-            curl https://sh.rustup.rs -sSf | sh -s -- -y
+          CIBW_BUILD: "cp312-manylinux_* cp313-manylinux_*"
+          CIBW_BEFORE_BUILD: >
+            curl https://sh.rustup.rs -sSf | sh -s -- -y &&
             source $HOME/.cargo/env
-        run: cibuildwheel --output-dir wheelhouse
+        run: |
+          cibuildwheel --output-dir wheelhouse
 
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: wheels-ubuntu-${{ matrix.python-version }}
-          path: wheelhouse/*.whl
+          name: linux-wheels
+          path: wheelhouse
