@@ -43,7 +43,7 @@ jobs:
           CIBW_BEFORE_BUILD: |
             . $HOME/.cargo/env
             command -v cargo
-            echo ". $HOME/.cargo/env" >> "$GITHUB_ENV"
+            echo ". $HOME/.cargo/env" >> "$GITHUB_PATH"
             command -v cargo
           CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
         run: |
