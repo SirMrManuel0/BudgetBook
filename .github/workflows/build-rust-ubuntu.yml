@@ -39,7 +39,10 @@ jobs:
       - name: Build wheels with cibuildwheel
         env:
           CIBW_BUILD: "cp312-manylinux_* cp313-manylinux_*"
-          CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
+          CIBW_BEFORE_ALL: >
+            curl https://sh.rustup.rs -sSf | sh -s -- -y &&
+            . $HOME/.cargo/env
+            CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
         run: |
           cibuildwheel --output-dir wheelhouse
 
