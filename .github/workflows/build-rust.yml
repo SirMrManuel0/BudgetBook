@@ -45,7 +45,6 @@ jobs:
 
       - name: Build wheels with cibuildwheel
         env:
-          PATH: ${{ runner.os == 'Windows' && format('{0};{1}', env.PATH, env.USERPROFILE + '\\.cargo\\bin') || format('{0}:{1}', env.PATH, env.HOME + '/.cargo/bin') }}
           CIBW_ENVIRONMENT: "RUSTFLAGS='-C target-cpu=native'"
           CIBW_BUILD: "cp312-* cp313-*"
           CIBW_LOG_LEVEL: "DEBUG"
