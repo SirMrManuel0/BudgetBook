@@ -17,6 +17,7 @@ rand_core = "0.9.3"
 sha2 = "0.10"
 base64 = "0.22.1"
 hex = "0.4"
+argon2-kdf = "1.6.2"
 
 [package.metadata.maturin]
 name = "mfence"

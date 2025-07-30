@@ -1,3 +1,6 @@
+use core::hash;
+use std::collections::HashMap;
+
 use pyo3::prelude::*;
 
 use chacha20poly1305::{
@@ -10,7 +13,7 @@ use p256::{
     pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey},
 };
 
-use argon2::{Argon2, Params, Version, Algorithm, password_hash::Salt};
+use argon2_kdf::{Algorithm, Hasher};
 use rand_core;
 use rand_core::TryRngCore;
 use base64::{engine::general_purpose, Engine as _};
@@ -54,8 +57,61 @@ fn ascii_addition_bytes(inputs: &[&[u8]]) -> Vec<u8> {
     result
 }
 
+
+enum SATypes<'a> {
+    U16(u16),
+    SString(String),
+    U8(u8),
+    U32(u32),
+    RefU8(&'a [u8])
+}
+
+/// Helper: split output from hash_pw properly
+fn split_argon(hash: &[u8]) -> HashMap<String, SATypes>{
+    let mut current: usize = 0;
+    let hash_len: &[u8] = &hash[0.. 2];
+    let hash_len: u16 = u16::from_be_bytes(hash_len.try_into().unwrap());
+    current += 2;
+    let hash_name_amount: usize = hash[current] as usize;
+    current += 1;
+    let hash_name: &[u8] = &hash[current.. current + hash_name_amount];
+    let hash_name: String = String::from_utf8(hash_name.to_vec())
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Hash parse error: {:?}", e))).unwrap();
+    current += hash_name_amount;
+    let version: u8 = hash[current];
+    current += 1;
+    let m_cost: &[u8] = &hash[current .. current + 4];
+    current += 4;
+    let t_cost: &[u8] = &hash[current .. current + 4];
+    current += 4;
+    let p_cost: &[u8] = &hash[current .. current + 4];
+    current += 4;
+    let m_cost: u32 = u32::from_be_bytes(m_cost.try_into().unwrap());
+    let t_cost: u32 = u32::from_be_bytes(t_cost.try_into().unwrap());
+    let p_cost: u32 = u32::from_be_bytes(p_cost.try_into().unwrap());
+    let salt_len: &[u8] = &hash[current .. current + 2];
+    current += 2;
+    let salt_len: usize = u16::from_be_bytes(salt_len.try_into().unwrap()) as usize;
+    let salt: &[u8] = &hash[current .. current + salt_len];
+    current += salt_len;
+    let hash_: &[u8] = &hash[current ..];
+    
+    let obj: HashMap<String, SATypes> = vec![
+        ("hash_len".to_string(), SATypes::U16(hash_len)),
+        ("hash_name".to_string(), SATypes::SString(hash_name)),
+        ("version".to_string(), SATypes::U8(version)),
+        ("m_cost".to_string(), SATypes::U32(m_cost)),
+        ("t_cost".to_string(), SATypes::U32(t_cost)),
+        ("p_cost".to_string(), SATypes::U32(p_cost)),
+        ("salt".to_string(), SATypes::RefU8(salt)),
+        ("hash".to_string(), SATypes::RefU8(hash_))
+    ].into_iter().collect();
+    obj
+    
+}
+
 #[pyclass]
-struct Encryptor {
+pub struct Encryptor {
     test_mode: bool,
     system_key: Vec<u8>,
 }
@@ -63,7 +119,7 @@ struct Encryptor {
 #[pymethods]
 impl Encryptor {
     #[new]
-    fn new(test: Option<bool>) -> Self {
+    pub fn new(test: Option<bool>) -> Self {
         let test = test.unwrap_or(false);
         // In real, get system_key from OS keyring or config
         let system_key = if !test {
@@ -81,7 +137,7 @@ impl Encryptor {
     }
 
     /// Generate username key with Argon2id, salt is optional
-    fn generate_username_key(&self, py: Python, username: &[u8], salt: Option<&[u8]>) -> PyResult<(Vec<u8>, Vec<u8>)> {
+    /* pub fn generate_username_key(&self, py: Python, username: &[u8], salt: Option<&[u8]>) -> PyResult<(Vec<u8>, Vec<u8>)> {
         let combined = ascii_addition_bytes(&[username, &self.system_key]);
 
         let salt_bytes = match salt {
@@ -111,10 +167,10 @@ impl Encryptor {
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Argon2 error: {:?}", e)))?;
 
         Ok((key.to_vec(), salt_bytes.to_vec()))
-    }
+    } */
 
     /// Encrypt username with ChaCha20Poly1305
-    fn encrypt_username(
+    /* pub fn encrypt_username(
         &self,
         py: Python,
         de_username: &[u8],
@@ -143,11 +199,11 @@ impl Encryptor {
         // So no separate tag needed.
 
         Ok((ciphertext, nonce_bytes, vec![], salt_bytes))
-    }
+    } */
 
     /// Decrypt username with ChaCha20Poly1305
     #[staticmethod]
-    fn decrypt_username(
+    pub fn decrypt_username(
         py: Python,
         en_username: &[u8],
         nonce: &[u8],
@@ -165,7 +221,7 @@ impl Encryptor {
     }
 
     /// Encrypt system data with ChaCha20Poly1305, nonce_len defaults to 12 (standard for chacha)
-    fn encrypt_system_data(&self, data: &[u8], nonce_len: Option<usize>, nonce: Option<&[u8]>) -> PyResult<Vec<u8>> {
+    pub fn encrypt_system_data(&self, data: &[u8], nonce_len: Option<usize>, nonce: Option<&[u8]>) -> PyResult<Vec<u8>> {
         let nonce_len = nonce_len.unwrap_or(12);
         if nonce_len != 12 {
             return Err(pyo3::exceptions::PyValueError::new_err("Nonce length for ChaCha20Poly1305 must be 12"));
@@ -192,7 +248,7 @@ impl Encryptor {
     }
 
     /// Decrypt system data
-    fn decrypt_system_data(&self, data: &[u8]) -> PyResult<Vec<u8>> {
+    pub fn decrypt_system_data(&self, data: &[u8]) -> PyResult<Vec<u8>> {
         if data.len() < 12 {
             return Err(pyo3::exceptions::PyValueError::new_err("Data too short for nonce"));
         }
@@ -203,4 +259,49 @@ impl Encryptor {
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Decrypt error: {:?}", e)))?;
         Ok(plaintext)
     }
+
+    /// Passwords given into this function are hashed with argon2id.
+    /// 
+    /// The password needs to given as bytes
+    /// 
+    /// The length of the hash is standardised at 64 bytes, but can vary.
+    /// 
+    /// The function returns as bytes [[u8]] in the following order:
+    /// 
+    /// hash len ([2] bytes), amount of bytes of the Algorithm ([1] byte), Algorithm name ([8] bytes (could vary)),
+    /// the version ([1] byte), memory_cost ([4] bytes), time_cost ([4] bytes), parallelism ([4] bytes), length of salt ([2] byte), salt ([varying] bytes), hash ([varying] bytes)
+    #[staticmethod]
+    pub fn hash_pw(py: Python, data: &[u8], hash_len: Option<u32>) -> PyResult<Vec<u8>>{
+        py.allow_threads(|| {
+            let hash_len: u32 = hash_len.unwrap_or(64);
+            let t_cost: u32 = 3;
+            let p_cost: u32 = 3;
+            let m_cost: u32 = 65536;
+            let salt_len: u32 = 16;
+
+            // Generate random salt
+            let mut salt_bytes = vec![0u8; salt_len as usize];
+            rand::rngs::OsRng.try_fill_bytes(&mut salt_bytes).unwrap();
+
+            // Hash the password
+            let hasher = Hasher::new()
+                                    .algorithm(Algorithm::Argon2id)
+                                    .hash_length(hash_len)
+                                    .salt_length(salt_len)
+                                    .memory_cost_kib(m_cost)
+                                    .threads(p_cost)
+                                    .iterations(t_cost);
+            let hash = hasher.hash(data).unwrap();
+            Ok(hash.as_bytes().to_vec())
+        })
+    }
+
+    #[staticmethod]
+    pub fn is_eq_argon(data: &[u8], hash: &[u8]) -> PyResult<bool>{
+        let len: usize = hash.len();
+        let hash_len: u8 = hash[0];
+        let hashed: &[u8] = &hash[len - hash_len as usize ..];
+        Ok(true)
+    }
+
 }
