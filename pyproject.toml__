@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin>=1.9.2,<1.9.3"]
+build-backend = "maturin"
+
+[project]
+name = "BudgetBook"
+version = "0.1.0"
+description = "The most secure BudgetBook."
+authors = [{name = "SirMrManuel0"}, {name="FishAndChips231"}]
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+
+[tool.maturin]
+bindings = "pyo3"
