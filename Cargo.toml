@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 pyo3 = {version = "0.25.1", features = ["extension-module"]}
 zeroize = "1.8.1"
 argon2 = "0.5.3"
-chacha20poly1305 = { version = "0.10", features = ["rand_core"] }
+chacha20poly1305 = { version = "0.10.1", features = ["rand_core"] }
 p256 = "0.13.2"
 rand = "0.9.2"
 rand_core = "0.9.3"
