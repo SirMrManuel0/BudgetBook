@@ -1,34 +1,72 @@
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
+use std::cmp::max;
+use memsec::{mlock, munlock};
 
+#[derive(Debug)]
 pub struct Secret {
-    data: Option<Vec<u8>>,
+    value: Zeroizing<Vec<u8>>,
 }
 
 impl Secret {
-    /// Create a new Secret from bytes
-    pub fn new(bytes: Vec<u8>) -> Self {
-        Self { data: Some(bytes) }
-    }
-
-    /// Reveal secret bytes (returns Option<&[u8]>)
-    /// Note: returning a reference to internal bytes — use carefully!
-    pub fn reveal(&self) -> Option<&[u8]> {
-        self.data.as_deref()
-    }
-
-    pub fn reveal_pointer(&self) -> Option<*mut [u8]> {
-        *self.data
-    }
-
-    /// Erase the secret securely
-    pub fn erase(&mut self) {
-        if let Some(mut d) = self.data.take() {
-            d.zeroize();
+    fn new(data: Vec<u8>) -> Self {
+        let mut val = Zeroizing::new(data);
+        unsafe {
+            let success = mlock(val.as_mut_ptr(), val.len());
+            if !success {
+                panic!("mlock failed");
+            }
+        }
+        Secret {
+            value: val,
         }
     }
 
-    /// Check if the secret has been erased
-    pub fn is_erased(&self) -> bool {
-        self.data.is_none()
+    fn expose(&self) -> &[u8] {
+        &self.value
+    }
+
+    fn wipe(&mut self) {
+        self.value.zeroize();
+        unsafe {
+            let success = munlock(self.value.as_mut_ptr(), self.value.len());
+            if !success {
+                eprintln!("munlock failed");
+            }
+        }
+    }
+
+}
+
+impl Drop for Secret {
+    fn drop(&mut self) {
+        // redundant but explicit: ensure inner is zeroed before deallocation
+        self.value.zeroize();
+        unsafe {
+            let _ = munlock(self.value.as_mut_ptr(), self.value.len());
+        }
     }
 }
+
+impl PartialEq for Secret {
+    fn eq(&self, other: &Self) -> bool {
+        let ls = self.value.len();
+        let lo = other.expose().len();
+        let ml = max(ls, lo);
+        let other_bytes: &[u8] = other.expose();
+        let mut result: usize = 0;
+        let mut a: usize;
+        let mut b: usize;
+        for i in 0..ml {
+            a = self.value.get(i).copied().unwrap_or(0) as usize;
+            b = other_bytes.get(i).copied().unwrap_or(0) as usize;
+            
+            result |= a ^ b;
+        }
+        
+        result |= ls ^ lo;
+
+        result == 0
+    }
+}
+
+impl Eq for Secret {}

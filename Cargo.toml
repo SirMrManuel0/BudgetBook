@@ -18,6 +18,7 @@ sha2 = "0.10"
 base64 = "0.22.1"
 hex = "0.4"
 argon2-kdf = "1.6.2"
+memsec = "0.7.0"
 
 [package.metadata.maturin]
 name = "mfence"
