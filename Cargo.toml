@@ -1,6 +1,6 @@
 [package]
 name = "mfence"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [lib]
@@ -19,6 +19,9 @@ base64 = "0.22.1"
 hex = "0.4"
 argon2-kdf = "1.6.2"
 memsec = "0.7.0"
+hkdf = "0.12"
+x25519-dalek = {version = "2", features = ["static_secrets", "serde"]}
+bincode = "1"
 
 [package.metadata.maturin]
 name = "mfence"
