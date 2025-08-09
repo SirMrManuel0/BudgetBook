@@ -1,67 +1,41 @@
-from mfence import Encryptor
-import base64
+import secrets
+from budget_book import RustEncryptor
+from mfence import PyVaultType
 
-from argon2.low_level import hash_secret_raw, Type
-import os
+e = RustEncryptor(test=True)
+key = secrets.token_bytes(32)
+vt = PyVaultType.chacha_key
+nonce = secrets.token_bytes(24)
+plaintext = b"Praise the Fool!!!"
 
-def argon2id_hash(password: bytes):
-    hash_len = 64
-    t_cost = 3        # iterations
-    p_cost = 3        # parallelism
-    m_cost = 65536    # memory cost in KiB (64 MiB)
-    salt_len = 16
+vt2 = PyVaultType("EncryptWith")
+vt3 = PyVaultType("StoreHere")
 
-    salt = os.urandom(salt_len)
+e.add_secret(vt, key)
+e.add_secret(vt2, key)
 
-    hash_bytes = hash_secret_raw(
-        secret=password,
-        salt=salt,
-        time_cost=t_cost,
-        memory_cost=m_cost,
-        parallelism=p_cost,
-        hash_len=hash_len,
-        type=Type.ID
-    )
+n, ciphertext = e.encrypt_chacha(plaintext, nonce)
 
-    return hash_bytes
+print(n)
+print(len(n))
+print(ciphertext)
+print(len(ciphertext))
 
-#e = Encryptor(True)
-#print(base64.b64encode(Encryptor.hash_pw(b"hallo", 32)[-32:]).decode('ascii'))
+pl = e.decrypt_chacha(ciphertext, n, vt)
 
-from datetime import datetime
+print(pl.decode())
 
-its = 100
-print("========== Rust ==========")
-start = datetime.now()
+no, cipher = e.encrypt_key_chacha(vt2, vt3, vt)
 
-for _ in range(its):
-    print(base64.b64encode(Encryptor.hash_pw(b"hallo", 64)[-64:]).decode('ascii'))
+plain_key = e.decrypt_chacha(cipher, no, vt)
 
-end = datetime.now()
+retrieved = e.get_secret(vt3)
+no_ret = retrieved[:24]
+cipher_ret = retrieved[24:]
 
-elapsed_rust = end - start
-print(f"Time taken: {elapsed_rust.total_seconds()} seconds.")
-print(f"Average Time: {elapsed_rust.total_seconds()/its} seconds.")
+print(cipher == cipher_ret)
 
-print("========== Python ==========")
+de_ret = e.decrypt_chacha(cipher_ret, no_ret, vt)
+print(plain_key == key == de_ret)
 
-start = datetime.now()
 
-for _ in range(its):
-    print(base64.b64encode(argon2id_hash(b"hallo")).decode('ascii'))
-
-end = datetime.now()
-
-elapsed_python = end - start
-print(f"Time taken: {elapsed_python.total_seconds()} seconds.")
-print(f"Average Time: {elapsed_python.total_seconds()/its} seconds.")
-
-print("========== Python vs Rust ==========")
-
-print(f"Rust Total: {elapsed_rust.total_seconds()}")
-print(f"Python Total: {elapsed_python.total_seconds()}")
-print(f"Difference (Python - Rust): {elapsed_python.total_seconds() - elapsed_rust.total_seconds()}")
-
-print(f"Rust Average: {elapsed_rust.total_seconds() / its}")
-print(f"Python Average: {elapsed_python.total_seconds() / its}")
-print(f"Difference (Python - Rust): {elapsed_python.total_seconds() / its - elapsed_rust.total_seconds() / its}")

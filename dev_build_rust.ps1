@@ -236,46 +236,67 @@ if (Test-Path "requirements.txt") {
 Write-Host ""
 Write-Colored "=== Installing Maturin and Running 'maturin develop --release' ===" Cyan
 
+# Install maturin
 $pipMaturinOutput = pip install maturin 2>&1
 Write-IndentedOutput $pipMaturinOutput
 
-try {
-    $maturinOutput = maturin develop --release 2>&1
+# Run maturin and capture unified output
+$maturinOutput = & maturin develop --release 2>&1
+$exitCode = $LASTEXITCODE
 
-    # Split output lines and print, highlighting install success or errors
-    $lines = $maturinOutput -split "`n"
+# Split into lines for inspection
+$lines = $maturinOutput -split "`r?`n"
 
-    $installedPattern = 'Installed\s+([\w\-.]+-\d+\.\d+\.\d+)'  # matches e.g. Installed mfence-0.1.0
-    $errorPattern = '(error|failed|exception)'  # simple error keywords, case-insensitive
+# Regex patterns
+$installedPattern = 'Installed\s+([\w\-.]+-\d+\.\d+\.\d+)'
+$warningPattern   = '\bwarning\b'          # case-insensitive
+$errorPattern     = '\b(error|failed|exception)\b'  # case-insensitive
 
-    $successFound = $false
-    $errorFound = $false
+$successFound = $false
+$warningFound = $false
+$errorFound   = $false
 
-    foreach ($line in $lines) {
-        if ($line -match $installedPattern) {
-            Write-Colored $line Green
-            $successFound = $true
-        } elseif ($line -match $errorPattern) {
-            Write-Colored $line Red
-            $errorFound = $true
-        } else {
-            Write-Host $line
-        }
+foreach ($line in $lines) {
+    $lower = $line.ToLower()
+
+    if ($line -match $installedPattern) {
+        Write-Colored $line Green
+        $successFound = $true
     }
-
-    if (-not $successFound) {
-        Write-Colored "'maturin develop --release' completed but no 'Installed ...' line detected." Yellow
+    elseif ($lower -match $warningPattern -and -not ($lower -match $errorPattern)) {
+        Write-Colored $line Yellow
+        $warningFound = $true
     }
-
-    if ($errorFound) {
-        Write-Colored "There were errors during 'maturin develop --release'." Red
-    } elseif ($successFound) {
-        Write-Colored "'maturin develop --release' completed successfully." Green
+    elseif ($lower -match $errorPattern) {
+        Write-Colored $line Red
+        $errorFound = $true
+    }
+    else {
+        Write-Host $line
     }
 }
-catch {
-    Write-Colored "Error running 'maturin develop': $_" Red
+
+# Summaries
+if (-not $successFound) {
+    Write-Colored "'maturin develop --release' finished but no 'Installed ...' line was detected." Yellow
 }
+
+if ($exitCode -ne 0) {
+    Write-Colored "maturin exited with non-zero exit code ($exitCode)." Red
+    $errorFound = $true
+}
+
+if ($errorFound) {
+    Write-Colored "There were errors during 'maturin develop --release'." Red
+} elseif ($warningFound) {
+    Write-Colored "'maturin develop --release' completed with warnings." Yellow
+} elseif ($successFound) {
+    Write-Colored "'maturin develop --release' completed successfully." Green
+} else {
+    # Fallback if nothing matched but exit code was zero
+    Write-Colored "Finished 'maturin develop --release' (no explicit success/error line detected)." Cyan
+}
+
 
 # -------- Run Application --------
 # Uncomment below lines to run your app
