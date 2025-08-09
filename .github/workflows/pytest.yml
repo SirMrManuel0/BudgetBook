@@ -31,7 +31,24 @@ jobs:
         python -m pip install flake8 pytest
         python -m pip install -r requirements.txt
     - name: Install build-dependencies and build
-      run: bash ./build.sh
+      run: |
+        #!/usr/bin/env bash
+        set -e
+
+        echo "=== Rust installieren ==="
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
+
+        echo "=== Python & Pip prüfen ==="
+        python --version
+        pip --version
+
+        echo "=== Maturin installieren ==="
+        pip install --upgrade pip
+        pip install maturin
+
+        echo "=== Projekt mit Maturin bauen ==="
+        maturin develop --release
     - name: Test with pytest
       run: |
         pytest
