@@ -21,12 +21,16 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Create and activate virtual environment
+      run: |
+        python3 -m venv .venv
+        source .venv/bin/activate
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         python -m pip install flake8 pytest
         python -m pip install -r requirements.txt
-    - name: Install dependencies and build
+    - name: Install build-dependencies and build
       run: bash ./build.sh
     - name: Lint with flake8
       run: |
