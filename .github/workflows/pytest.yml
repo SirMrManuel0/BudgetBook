@@ -51,4 +51,5 @@ jobs:
         maturin develop --release
     - name: Test with pytest
       run: |
+        which python
         pytest
