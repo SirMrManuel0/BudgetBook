@@ -15,6 +15,8 @@ from typing import Iterable, Optional, Union, Literal
 
 from pylix.errors import to_test
 
+from budget_book import RustEncryptor, VaultType
+
 
 class Converter:
     @classmethod
@@ -139,91 +141,55 @@ class Encryptor:
         :param test: If tests are programmed, the parameter test must be True.
         """
         self._test = test
+        self._encryptor = RustEncryptor(test)
+        self._set_system_key()
 
-    def _get_system_key(self) -> bytes:
+    def _access_encryptor(self) -> Optional[RustEncryptor]:
+        if self._test:
+            return self._encryptor
+        return None
+
+    def _set_system_key(self) -> None:
+        key = None
         if not self._test:
-            return Converter.b64_to_byte(keyring.get_password("BudgetBook", "system_key"))
+            key = Converter.b64_to_byte(keyring.get_password("BudgetBook", "system_key"))
         else:
             # test key
-            return Converter.hex_to_byte("f291edbb67f5bdb73814452098436b30f8615ee01b1e086d4f747748b672355ef33481c6b4a"
-                                         "c812f837128085ef667f00bae190c1be2b8506a2a5590a743d0ff4760d8216b4b8c0f1252fd"
-                                         "8ad1e1332f6557874c36872b410e29a764458c12b8bd0cfe10ddc99db05b539eb4fd31880cd"
-                                         "9704899d6a5bd69a6a3413f188f43c4d374c8c042c163074a45f987acdd69bea59beabe9424"
-                                         "68f5a5d0fcdfbbff9d4fef1a60f51247e9212da9c9b5232caa38f06e386f318e10d4b94016a"
-                                         "a3270ad18dd68540100819bd8a0ba8e176aa601109678a4969159f767ae04d24cbd404e7b1b8"
-                                         "7721831a5af291ae257e7419200b602d9348399623e0c5380590739f83c28")
+            key = Converter.b64_to_byte("8pHtu2f1vbc4FEUgmENrMPhhXuAbHghtT3R3SLZyNV7zNIHGtKyBL4NxKAhe9mfwC64ZDBviuFBqKl"
+                                        "WQp0PQ/0dg2CFrS4wPElL9itHhMy9lV4dMNocrQQ4pp2RFjBK4vQz+EN3JnbBbU560/TGIDNlwSJnW"
+                                        "pb1ppqNBPxiPQ8TTdMjAQsFjB0pF+Yes3Wm+pZvqvpQkaPWl0Pzfu/+dT+8aYPUSR+khLanJtSMsqj"
+                                        "jwbjhvMY4Q1LlAFqoycK0Y3WhUAQCBm9iguo4XaqYBEJZ4pJaRWfdnrgTSTL1ATnsbh3IYMaWvKRri"
+                                        "V+dBkgC2Atk0g5liPgxTgFkHOfg8KA==")
+        self._encryptor.add_secret(VaultType.system_key(), key)
 
-    @classmethod
-    def _ascii_addition_bytes(cls, *args: bytes) -> bytes:
-        # Convert all to bytearrays for mutability
-        byte_args = [bytearray(arg) for arg in args]
+    def add_secret(self, vt: VaultType, secret: bytes) -> None:
+        self._encryptor.add_secret(vt, secret)
 
-        # Find the longest one
-        longest = max(byte_args, key=len)
-        result = bytearray(longest)  # make a copy to modify
+    def compare_with_secret(self, a: VaultType, b: bytes):
+        self._encryptor.add_secret(VaultType("temp_comparer"), b, True)
+        compared = self.compare_secret(a, VaultType("temp_comparer"))
+        self._encryptor.remove_secret(VaultType("temp_comparer"))
+        return compared
 
-        for arg in byte_args:
-            if arg is longest:
-                continue  # skip the base
+    def compare_secret(self, a: VaultType, b: VaultType):
+        return self._encryptor.compare_secrets(a, b)
 
-            arg_len = len(arg)
-            if arg_len == 0:
-                continue
-
-            n = 0
-            while True:
-                # Calculate start index according to your rule:
-                # offset = (len(arg) - 1) + (n-1)*len(arg) + (n-2)*len(arg)
-                offset = (arg_len - 1) + n * arg_len + (n - 1) * arg_len if n > 0 else 0
-                if offset >= len(result):
-                    break
-
-                for i, b in enumerate(arg):
-                    idx = offset + i
-                    if idx >= len(result):
-                        break
-                    result[idx] = (result[idx] + b) % 256
-
-                n += 1
-
-        return bytes(result)
-
-    def generate_username_key(self, username: bytes, salt: Optional[bytes] = None) -> tuple[bytes, bytes]:
+    def generate_username_key(self, username: bytes, secret_name: str, salt: Optional[bytes] = None) -> bytes:
         """
         This method is used to generate the key for the username (usernames are encrypted with themselves)
 
+        :param secret_name: The secret_name must be known in order to access the username key.
         :param username: The username must be given as bytes
         :param salt: If this is not the first time, the salt of the first salt generation must be given as bytes
-        :return: It returns in the same order the username key and the salt. both as bytes
+        :return: It returns the salt, with which the username key was derived
         """
-        system_key = self._get_system_key()
-        salt_ = ""
-        time_cost = 3
-        memory_cost = 65536
-        parallelism = 3
-        hash_len = 32
-        user_key = ""
-        hashed = list()
-        if salt is not None:
-            salt_ = salt
-            hashed = hash_secret(
-                secret=self._ascii_addition_bytes(username, system_key),
-                salt=salt_,
-                time_cost=time_cost,
-                memory_cost=memory_cost,
-                parallelism=parallelism,
-                hash_len=hash_len,
-                type=Type.ID,
-            ).decode().split("$")
-        else:
-            ph = PasswordHasher(time_cost=time_cost, memory_cost=memory_cost, parallelism=parallelism, hash_len=hash_len)
-            hashed = ph.hash(self._ascii_addition_bytes(username, system_key)).split("$")
+        salt_ = secrets.token_bytes(16) if salt is None else salt
+        self._encryptor.add_secret(VaultType("temp_username"), username, True)
+        self._encryptor.derive_key(VaultType(secret_name), VaultType("temp_username"), salt_)
+        self._encryptor.remove_secret(VaultType("temp_username"))
+        return salt_
 
-        salt_ = hashed[4]
-        user_key = hashed[5]
-        return Converter.b64_to_byte(user_key), Converter.b64_to_byte(salt_)
-
-    def encrypt_username(self, de_username: bytes, salt: Optional[bytes] = None, nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes, bytes]:
+    def encrypt_username(self, de_username: bytes, secret_name: str, salt: Optional[bytes] = None, nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes, bytes]:
         """
         In order to encrypt the username it needs to be given together with the salt and nonce, if it is not the first time.
 
@@ -232,22 +198,11 @@ class Encryptor:
         :param nonce: The nonce must be given, if it is not the first time, as bytes
         :return: It returns in the same order as bytes: the encrypted username, the nonce, the tag (used by AES-GCM), the salt
         """
-        key_, salt_ = self.generate_username_key(username=de_username, salt=salt)
-        en_username = ""
-        nonce_ = nonce
-        tag = None
-        if nonce_ is not None:
-            cipher = Cipher(algorithms.AES(key_), modes.GCM(nonce_))
-            encryptor = cipher.encryptor()
-            en_username = encryptor.update(de_username) + encryptor.finalize()
-            tag = encryptor.tag
-        else:
-            nonce_ = secrets.token_bytes(32)
-            cipher = Cipher(algorithms.AES(key_), modes.GCM(nonce_))
-            encryptor = cipher.encryptor()
-            en_username = encryptor.update(de_username) + encryptor.finalize()
-            tag = encryptor.tag
-        return en_username, nonce_, tag, salt_
+        salt_ = self.generate_username_key(username=de_username, secret_name=secret_name, salt=salt)
+        nonce_ = nonce if nonce is not None else secrets.token_bytes(24)
+
+
+        return en_username, nonce_, salt_
 
     @classmethod
     def decrypt_username(cls, en_username: bytes, nonce: bytes, tag: bytes, user_key: bytes) -> bytes:

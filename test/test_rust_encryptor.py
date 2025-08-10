@@ -119,6 +119,24 @@ def test_ecdhe(a: bytes, b: bytes, vt_a: VaultType, vt_b: VaultType,
         assert generated == expected
 
 @pytest.mark.parametrize(
+    "b,salt,expected",
+    [
+        (b"Here is somthing to derive a key from", b"this is a salt", Converter.b64_to_byte("iBq/XjJYYDqDfjHsdRIJtOIioIdErBO7hnFws62J9I8=")),
+        (b"Here is somthing to derive a key from", secrets.token_bytes(32), None),
+        (secrets.token_bytes(64), secrets.token_bytes(32), None),
+    ]
+)
+def test_derive_key(b: bytes, salt: bytes, expected: bytes):
+    encryptor = RustEncryptor(True)
+    encryptor.add_secret(VaultType("from"), b)
+    encryptor.derive_key(VaultType("store"), VaultType("from"), salt)
+    encryptor.derive_key(VaultType("store2"), VaultType("from"), salt)
+    if expected is not None:
+        encryptor.add_secret(VaultType("expected"), expected)
+        assert encryptor.compare_secrets(VaultType("store"), VaultType("expected"))
+    assert encryptor.compare_secrets(VaultType("store"), VaultType("store2"))
+
+@pytest.mark.parametrize(
     "a,b,expected",
     [
         (Converter.b64_to_byte("aHdsLugMgiSHdAosJhg0jBq3yEnDJHfXpoELFp6mn2A="), Converter.b64_to_byte("BL0DVT5e2j1uRN4Wkfa613xdw4nXbr8mzf/4ot9wkbInCjERLvW3AnR5Q1Nhw0CrFPjo6wccbPtlvob6mg0MqHjMhNqR2pLRltEVYSQ9tVC6CKXCMfimC1elJ3Jboaf5axZdqM+Ae1SD8Bhl+ZCzWc4rU5lbGgTXIEDDxKernU8="), Converter.b64_to_byte("bDRvgyZqXGH1uOhCtw7uY5YUi9Kakjb9c4ADuH0WMBInCjERLvW3AnR5Q1Nhw0CrFPjo6wccbPtlvob6mg0MEO84ssKdXLZYCttBhzxxQWpx0O6FVW99sdiwPRABQAf5axZdqM+Ae1SD8Bhl+ZCzWc4rU5lbGgTXIEDDxKernbc=")),

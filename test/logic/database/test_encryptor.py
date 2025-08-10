@@ -1,6 +1,8 @@
 import hashlib
 
 import pytest
+
+from budget_book import VaultType
 from budget_book.logic.database.encryptor import Encryptor, Converter, HashingAlgorithm
 
 
@@ -40,18 +42,19 @@ def test_ascii_addition_bytes(inputs, expected, custom_check):
         assert result == expected
 
 @pytest.mark.parametrize(
-    "username,salt_,expected",
+    "username,userkey_name,salt_,expected",
     [
-        (b"BOB", "8GIB0nWfBIpu+nwuo/Wiqg==", "4gXItT7UElI54BDjpIHfaDphLM4oZc7W1H9R7Veq2lM="),
-        (b"John", "Qbaf5hrwHGNviSKP+v71/w==", "SWsk8Rt9xx8WbeggY9QUNu5HhkTnYMhjk8/1usFUKVM="),
-        (b"Marie :)", "5LpsadjfH4SIovl6oA2hqA==", "HEd6rO1Z/wp+9960zavpXbD9JQZeHsBcixWJErUN8xE="),
-        (b"Valerie", "vejTfpREG3JRPbuuw5Yuqw==", "u2OzXzcG2NLT5yHKTCUjJvOOFTfKmeDry+7IWx/qWhc=")
+        (b"BOB", "username", "8GIB0nWfBIpu+nwuo/Wiqg==", "Gl33KKFujdPZ/ACbPQxWXj/BCSI7N6oggIHpl0358Ek="),
+        (b"John", "userkey", "Qbaf5hrwHGNviSKP+v71/w==", "fsXAX62ChBtbLzm/gsDGYlJKd0hXeLe4r+KtFxQXNbU="),
+        (b"Marie :)", "usercan", "5LpsadjfH4SIovl6oA2hqA==", "XOUqVBKa8Q0trXwbXvJHBez1RU7DASnHDDIWMh3PX6M="),
+        (b"Valerie", "i am not creative enough", "vejTfpREG3JRPbuuw5Yuqw==", "PLOYoRIrNYojYEqC7QVq/K8hIwAj3XBmOF4B5FwcgAE=")
     ]
 )
-def test_generate_username_key(username, salt_, expected):
+def test_generate_username_key(username, userkey_name, salt_, expected):
     salt_ = Converter.b64_to_byte(salt_)
-    key, salt = Encryptor(True).generate_username_key(username, salt=salt_)
-    assert Converter.byte_to_b64(key) == expected and salt == salt_
+    e = Encryptor(True)
+    salt = e.generate_username_key(username, userkey_name, salt_)
+    assert e.compare_with_secret(VaultType(userkey_name), Converter.b64_to_byte(expected)) and salt == salt_
 
 @pytest.mark.parametrize(
     "username,salt_,nonce_,expected",

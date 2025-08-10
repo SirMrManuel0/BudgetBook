@@ -116,7 +116,13 @@ impl Encryptor {
         Ok(())
     }
 
-    pub fn add_secret(&mut self, key: PyRef<PyVaultType>, secret: &[u8]) -> PyResult<()> {
+    pub fn add_secret(&mut self, key: PyRef<PyVaultType>, secret: &[u8], force: bool) -> PyResult<()> {
+        if force {
+            let (is_, vt) = has_secret_vk(&self, &key.vt);
+            if is_ {
+                self.vault.remove(&vt).map_err(|e| PyException::new_err(format!("Could not remove {:?}", e)))?;
+            }
+        }
         let vt = copy_vt(&key.vt);
         self
             .vault
@@ -247,19 +253,7 @@ impl Encryptor {
     pub fn gen_static_private_key(&mut self, store: PyRef<PyVaultType>) -> PyResult<()> {
         let (is_, store) = has_secret_vk(&self, &store.vt);
         if is_ {
-            return Err(PyException::new_err("Too many kes here."));
-        }
-        let mut secret_a = StaticSecret::random_from_rng(OsRng);
-        let secret_ = bincode::serialize(&secret_a).map_err(|_| PyException::new_err("There was an error at serialization."))?;
-        secret_a.zeroize();
-        self.vault.add(store, secret_).map_err(|e| PyException::new_err(format!("There was an error at mlock! {:?}", e)))?;
-        Ok(())
-    }
-
-    pub fn gen_eph_private_key(&mut self, store: PyRef<PyVaultType>) -> PyResult<()> {
-        let (is_, store) = has_secret_vk(&self, &store.vt);
-        if is_ {
-            return Err(PyException::new_err("Too many kes here."));
+            return Err(PyException::new_err("Too many keys here."));
         }
         let mut secret_a = StaticSecret::random_from_rng(OsRng);
         let secret_ = bincode::serialize(&secret_a).map_err(|_| PyException::new_err("There was an error at serialization."))?;
@@ -311,7 +305,7 @@ impl Encryptor {
         Ok(())
     }
 
-    pub fn derive_key(&mut self, store: PyRef<PyVaultType>, from: PyRef<PyVaultType>) -> PyResult<()> {
+    pub fn derive_key(&mut self, store: PyRef<PyVaultType>, from: PyRef<PyVaultType>, salt: Option<&[u8]>) -> PyResult<()> {
         let (is_, store): (bool, VaultType) = has_secret_vk(&self, &store.vt);
         if is_ {
             return Err(PyException::new_err("Too many keys with this VaultType associated."));
@@ -324,7 +318,7 @@ impl Encryptor {
             Some(k) => k.expose(),
             None => panic!("WTF HOW????")
         };
-        let hk = Hkdf::<Sha256>::new(None, key);
+        let hk = Hkdf::<Sha256>::new(salt, key);
         let mut output: Vec<u8> = vec![0u8; 32];
 
         hk.expand(b"", &mut output).map_err(|_| PyException::new_err("Key derivation failed!"))?;
