@@ -1,11 +1,12 @@
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroize;
 use std::{cmp::max, collections::HashMap};
 use memsec::{mlock, munlock};
 use std::hash::{Hash, Hasher};
 
 use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
 use pyo3::basic::CompareOp;
+
+use std::io;
 
 #[derive(Debug)]
 pub enum SecretError {
@@ -27,14 +28,14 @@ impl ImportantTags {
 }
 
 pub struct Secret {
-    value: Zeroizing<Vec<u8>>,
+    value: Vec<u8>,
     locked: bool,
     tags: Vec<String>,
 }
 
 impl Secret {
     pub fn new(data: Vec<u8>) -> Result<Self, SecretError> {
-        let mut val = Zeroizing::new(data);
+        let mut val = data;
         unsafe {
             if !mlock(val.as_mut_ptr(), val.len()) {
                 return Err(SecretError::LockFailed);
@@ -81,7 +82,9 @@ impl Secret {
         self.value.zeroize();
         if self.locked {
             unsafe {
-                if !munlock(self.value.as_mut_ptr(), self.value.len()) {
+                if !munlock(self.value.as_mut_ptr(), self.value.capacity()) {
+                    let err = io::Error::last_os_error();
+                    panic!("{}", err);
                     return Err(SecretError::LockFailed);
                 }
             }
@@ -91,6 +94,18 @@ impl Secret {
             Ok(())
         }
     }
+
+    pub fn force_lock(&mut self) {
+        unsafe { 
+            if mlock(self.value.as_mut_ptr(), self.value.capacity()) {
+                self.locked = true;
+            } else {
+                let err = io::Error::last_os_error();
+                panic!("{}", err);
+            }
+
+        }
+    }
 }
 
 impl Drop for Secret {
@@ -98,7 +113,7 @@ impl Drop for Secret {
         self.value.zeroize();
         if self.locked {
             unsafe {
-                let _ = munlock(self.value.as_mut_ptr(), self.value.len());
+                let _ = munlock(self.value.as_mut_ptr(), self.value.capacity());
             }
         }
     }
@@ -258,7 +273,7 @@ impl PyVaultType {
         }
     }
     #[classattr]
-    pub fn gen_eph_private_key() -> Self {
+    pub fn eph_private_key() -> Self {
         PyVaultType {
             vt: VaultType::EphPrivateKey,
         }
@@ -309,6 +324,20 @@ impl PyVaultType {
 
 pub struct SecretVault {
     secrets: HashMap<VaultType, Secret>
+}
+
+fn temp(v: &VaultType) -> String {
+    match v {
+        VaultType::PrivateKey => String::from("PrivateKey"),
+        VaultType::StaticPrivateKey => String::from("StaticPrivateKey"),
+        VaultType::EphPrivateKey => String::from("EphPrivateKey"),
+        VaultType::SharedSecret => String::from("SharedSecret"),
+        VaultType::PublicKey => String::from("PublicKey"),
+        VaultType::Password => String::from("Password"),
+        VaultType::ChaChaKey => String::from("ChaChaKey"),
+        VaultType::SystemKey => String::from("SystemKey"),
+        VaultType::Other(a) => String::from(a),
+    }
 }
 
 impl SecretVault {
@@ -362,18 +391,35 @@ impl SecretVault {
                 Err(e) => { return Err(e); }
             }
         }
+        self.relock_all();
         Ok(())
+    }
+
+    pub fn relock_all(&mut self) {
+        for (_key, secret) in self.secrets.iter_mut() {
+            secret.force_lock();
+        }
+    }
+
+    pub fn show_all_keys(&self) -> Vec<String>{
+        self.secrets
+            .keys()
+            .map(|v| temp(v))
+            .collect()
     }
 
     /// Wipe all contained secrets in place
     pub fn wipe_all(&mut self) -> Result<(), SecretError>{
-        for secret in self.secrets.values_mut() {
-            match secret.wipe() {
-                Ok(e) => { e }
-                Err(e) => { return Err(e); }
+        let keys: Vec<_> = self.secrets.keys().cloned().collect(); // collect keys to avoid borrowing issues
+        for key in keys {
+            // Take mutable reference via entry API temporarily:
+            if let Some(secret) = self.secrets.get_mut(&key) {
+                secret.wipe()?;
             }
+            // Now you can safely relock_all without conflicting borrow:
+            self.relock_all();
         }
-        Ok(())
+    Ok(())
     }
 
     /// Consume the vault and return all secrets (they are still responsible for their own wiping)

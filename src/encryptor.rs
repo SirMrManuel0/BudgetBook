@@ -15,9 +15,7 @@ use std::str::FromStr;
 use rand_core;
 use rand_core::TryRngCore;
 
-use crate::secret::ImportantTags;
-
-use super::secret::{SecretVault, VaultType, PyVaultType, copy_vt};
+use super::secret::{SecretVault, VaultType, PyVaultType, copy_vt, Secret, ImportantTags};
 
 /// Helper: XOR-like addition of bytes (similar to _ascii_addition_bytes in Python)
 pub fn ascii_addition_bytes(inputs: &[&[u8]]) -> Vec<u8> {
@@ -307,7 +305,7 @@ impl Encryptor {
         Ok(())
     }
 
-    pub fn hash_pw(&self, from: PyRef<PyVaultType>, hash_len: Option<u32>, salt: Option<&[u8]>) -> PyResult<String>{
+    pub fn hash_pw(&self, from: PyRef<PyVaultType>, hash_len: Option<u32>, salt_len: Option<u32>, salt: Option<&[u8]>) -> PyResult<String>{
         let (is_, vk) = has_secret_vk(self, &from.vt);
         if !is_ {
             return Err(PyException::new_err("There is no key..."));
@@ -316,7 +314,7 @@ impl Encryptor {
         let t_cost: u32 = 3;
         let p_cost: u32 = 3;
         let m_cost: u32 = 65536;
-        let salt_len: u32 = 16;
+        let salt_len: u32 = salt_len.unwrap_or(16);
 
         // Generate random salt
         let mut salt_bytes = vec![0u8; salt_len as usize];
@@ -341,10 +339,42 @@ impl Encryptor {
         Ok(hash.to_string())
     }
 
-    #[staticmethod]
-    pub fn is_eq_argon(data: &[u8], hash: &str) -> PyResult<bool>{
+    pub fn is_eq_argon(&self, from: PyRef<PyVaultType>, hash: &str) -> PyResult<bool>{
+        let vt: VaultType = {
+            let (is_, secret_) = has_secret_vk(&self, &from.vt);
+            if !is_ {
+                return Err(PyException::new_err("There is nothing to test the hash with..."));
+            }
+            secret_
+        };
+        let data: &[u8] = self.vault.get(&vt).expect("IMPOSSIBLE!!!").expose();
         let hash = Hash::from_str(hash).unwrap();
         Ok(hash.verify(data))
     }
 
+    pub fn show_all_keys(&self) -> PyResult<Vec<String>> {
+        Ok(self.vault.show_all_keys())
+    }
+
+    pub fn compare_secrets(&self, a: PyRef<PyVaultType>, b: PyRef<PyVaultType>) -> PyResult<bool> {
+        let vt_a: VaultType = {
+            let (is_, vt) = has_secret_vk(&self, &a.vt);
+            if !is_ {
+                return Err(PyException::new_err("There is a missing secret."));
+            }
+            vt
+        };
+        let vt_b: VaultType = {
+            let (is_, vt) = has_secret_vk(&self, &b.vt);
+            if !is_ {
+                return Err(PyException::new_err("There is a missing secret."));
+            }
+            vt
+        };
+
+        let sec_a: &Secret = self.vault.get(&vt_a).expect("WTF ARE YOU ACTUALLY DOING???");
+        let sec_b: &Secret = self.vault.get(&vt_b).expect("WTF ARE YOU ACTUALLY DOING???");
+        
+        Ok(sec_a == sec_b)
+    }
 }
