@@ -132,7 +132,13 @@ impl Encryptor {
     }
 
     pub fn remove_secret(&mut self, key: PyRef<PyVaultType>) -> PyResult<()> {
-        let vt: VaultType = copy_vt(&key.vt);
+        let vt = {
+            let (is_, vt) = has_secret_vk(&self, &key.vt);
+            if !is_ {
+                return Ok(());
+            }
+            vt
+        };
         self.vault.remove(&vt)
             .map_err(|e| PyValueError::new_err(format!("There was an error at secret ereasure: {:?}", e)))?;
         Ok(())

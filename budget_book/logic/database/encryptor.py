@@ -1,5 +1,7 @@
 import secrets
 import base64
+from pydoc import plaintext
+
 import keyring
 import hashlib
 
@@ -189,56 +191,51 @@ class Encryptor:
         self._encryptor.remove_secret(VaultType("temp_username"))
         return salt_
 
-    def encrypt_username(self, de_username: bytes, secret_name: str, salt: Optional[bytes] = None, nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes, bytes]:
+    def encrypt_username(self, de_username: bytes, secret_name: str, salt: Optional[bytes] = None, nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
         """
         In order to encrypt the username it needs to be given together with the salt and nonce, if it is not the first time.
 
+        :param secret_name: This is the name of the VaultType reference, under which the userkey will also be saved.
         :param salt: The salt must be given, if it is not the first time, as bytes
         :param de_username: The username must be given as bytes
         :param nonce: The nonce must be given, if it is not the first time, as bytes
-        :return: It returns in the same order as bytes: the encrypted username, the nonce, the tag (used by AES-GCM), the salt
+        :return: It returns in the same order as bytes: the ciphertext, the nonce, the salt
         """
         salt_ = self.generate_username_key(username=de_username, secret_name=secret_name, salt=salt)
         nonce_ = nonce if nonce is not None else secrets.token_bytes(24)
+        _, ciphertext = self._encryptor.encrypt_chacha(de_username, nonce_, key=VaultType(secret_name))
 
+        return ciphertext, nonce_, salt_
 
-        return en_username, nonce_, salt_
-
-    @classmethod
-    def decrypt_username(cls, en_username: bytes, nonce: bytes, tag: bytes, user_key: bytes) -> bytes:
+    def decrypt_username(self, en_username: bytes, nonce: bytes, user_key: str) -> bytes:
         """
         This method is used to decrypt the username.
 
 
         :param en_username: The encrypted username must be given as bytes
         :param nonce: The nonce must be given as bytes
-        :param tag: The tag must be given as bytes
-        :param user_key: The key must be given as bytes (and should be generated with Encryptor.generate_username_key(username, salt))
+        :param user_key: This is the name of the VaultType reference which points to the userkey.
         :return: This function returns the username as bytes
         """
-        aes_gcm = AESGCM(user_key)
-        plaintext = aes_gcm.decrypt(nonce, en_username + tag, associated_data=None)
+        plaintext = self._encryptor.decrypt_chacha(en_username, nonce, VaultType(user_key))
         return plaintext
 
-    def encrypt_system_data(self, data: bytes, nonce_len: int = 32, nonce: Optional[bytes] = None) -> bytes:
+    def encrypt_system_data(self, data: bytes, nonce: Optional[bytes] = None, aad_opt: Optional[bytes] = None) -> bytes:
         """
         All system datas are encrypted with this function.
 
         :param data: The data must be given as bytes
-        :param nonce_len: The nonce_len is standard by 32, but could be increased (should only be done, if it is noted for this particular data)
         :param nonce: The nonce must be given if it is not the first time. It must be given as bytes
+        :param aad_opt: The aad is optional and can be given as bytes.
+        If it is given during encryption, it MUST be given during decryption.
         :return: It returns the encrypted data as bytes.
         """
-        key_ = self._get_system_key()
-        hashed_key = hashlib.sha256()
-        hashed_key.update(key_)
-        hashed_key = hashed_key.digest()
-        nonce_ = secrets.token_bytes(nonce_len) if nonce is None else nonce
-        cipher = Cipher(algorithms.AES(hashed_key), modes.GCM(nonce_))
-        encryptor = cipher.encryptor()
-        en_data = encryptor.update(data) + encryptor.finalize()
-        tag = encryptor.tag
-        return nonce_ + en_data + tag
+        nonce_ = secrets.token_bytes(24) if nonce is None else nonce
+        self._encryptor.remove_secret(VaultType("temp_hashed_system_key"))
+        self._encryptor.derive_key(VaultType("temp_hashed_system_key"), VaultType.system_key())
+        _, ciphertext = self._encryptor.encrypt_chacha(data, nonce_, aad_opt, VaultType("temp_hashed_system_key"))
+        self._encryptor.remove_secret(VaultType("temp_hashed_system_key"))
+        return nonce_ + ciphertext
 
     def decrypt_system_data(self, en_data: bytes, nonce_len: int = 32) -> bytes:
         """
