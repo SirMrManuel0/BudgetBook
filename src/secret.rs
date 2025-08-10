@@ -412,12 +412,11 @@ impl SecretVault {
     pub fn wipe_all(&mut self) -> Result<(), SecretError>{
         let keys: Vec<_> = self.secrets.keys().cloned().collect(); // collect keys to avoid borrowing issues
         for key in keys {
-            // Take mutable reference via entry API temporarily:
+            self.relock_all();
+            
             if let Some(secret) = self.secrets.get_mut(&key) {
                 secret.wipe()?;
             }
-            // Now you can safely relock_all without conflicting borrow:
-            self.relock_all();
         }
     Ok(())
     }

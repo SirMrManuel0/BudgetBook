@@ -118,3 +118,6 @@ class RustEncryptor:
 
     def compare_secrets(self, a: VaultType, b: VaultType) -> bool:
         return self._encryptor.compare_secrets(a.inner, b.inner)
+
+    def ascii_add_secrets(self, a: VaultType, b: VaultType, store: VaultType):
+        return self._encryptor.ascii_add_secrets(store.inner, a.inner, b.inner)

@@ -117,3 +117,25 @@ def test_ecdhe(a: bytes, b: bytes, vt_a: VaultType, vt_b: VaultType,
     if expected is not None:
         generated = encryptor.get_secret(store_key, True)
         assert generated == expected
+
+@pytest.mark.parametrize(
+    "a,b,expected",
+    [
+        (Converter.b64_to_byte("aHdsLugMgiSHdAosJhg0jBq3yEnDJHfXpoELFp6mn2A="), Converter.b64_to_byte("BL0DVT5e2j1uRN4Wkfa613xdw4nXbr8mzf/4ot9wkbInCjERLvW3AnR5Q1Nhw0CrFPjo6wccbPtlvob6mg0MqHjMhNqR2pLRltEVYSQ9tVC6CKXCMfimC1elJ3Jboaf5axZdqM+Ae1SD8Bhl+ZCzWc4rU5lbGgTXIEDDxKernU8="), Converter.b64_to_byte("bDRvgyZqXGH1uOhCtw7uY5YUi9Kakjb9c4ADuH0WMBInCjERLvW3AnR5Q1Nhw0CrFPjo6wccbPtlvob6mg0MEO84ssKdXLZYCttBhzxxQWpx0O6FVW99sdiwPRABQAf5axZdqM+Ae1SD8Bhl+ZCzWc4rU5lbGgTXIEDDxKernbc=")),
+        (Converter.b64_to_byte("h3OooivySKsWcN7unIEMe9vfDH+qR1ZCsEp91w/ZfUE="), Converter.b64_to_byte("h3OooivySKsWcN7unIEMe9vfDH+qR1ZCsEp91w/ZfUE="), Converter.b64_to_byte("DuZQRFbkkFYs4LzcOAIY9ra+GP5UjqyEYJT6rh6y+oI=")),
+        (Converter.b64_to_byte("5Dh3+fMurkxGzaKBnBXP6w=="), Converter.b64_to_byte("i8Wm870inbcpKgieTsbvoTsM+aoIDUMvK6y4xS/MXBU="), Converter.b64_to_byte("b/0d7LBQSwNv96of6tu+jDsM+aoIDUMvK6y4xS/MXPk=")),
+        (Converter.b64_to_byte("MhsLDIWTYPmnflW6ieQCIw=="), Converter.b64_to_byte("34IioWPQ67g+/p5hMSiIn77WYlp7pNyoJgBz/B4rInBxmbq3PWLRMb4PQrNO6r3saPoLzTXjiqQgG64hrG3r+g=="), Converter.b64_to_byte("EZ0trehjS7HlfPMbugyKwr7WYlp7pNyoJgBz/B4rIqKMpMY80MLK2Dxk/Dwy7ODsaPoLzTXjiqQgG64hrG3rLA==")),
+    ]
+)
+def test_ascii_add(a: bytes, b: bytes, expected: bytes):
+    encryptor = RustEncryptor(True)
+    encryptor.add_secret(VaultType("A"), a)
+    encryptor.add_secret(VaultType("B"), b)
+    encryptor.ascii_add_secrets(VaultType("A"), VaultType("B"), VaultType("Store"))
+    encryptor.ascii_add_secrets(VaultType("A"), VaultType("B"), VaultType("Store2"))
+    result = encryptor.get_secret(VaultType("Store"), True)
+    result2 = encryptor.get_secret(VaultType("Store2"), True)
+    assert result == result2
+    if expected is not None:
+        assert result == expected
+

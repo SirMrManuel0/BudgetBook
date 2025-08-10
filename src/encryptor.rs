@@ -87,6 +87,35 @@ impl Encryptor {
         }
     }
 
+    pub fn ascii_add_secrets(&mut self, store: PyRef<PyVaultType>, a: PyRef<PyVaultType>, b: PyRef<PyVaultType>) -> PyResult<()> {
+        let vt_a: VaultType = {
+            let (is_, vt) = has_secret_vk(&self, &a.vt);
+            if !is_ {
+                return Err(PyException::new_err("There is a secret missing."));
+            }
+            vt
+        };
+        let vt_b: VaultType = {
+            let (is_, vt) = has_secret_vk(&self, &b.vt);
+            if !is_ {
+                return Err(PyException::new_err("There is a secret missing."));
+            }
+            vt
+        };
+        let store: VaultType = {
+            let (is_, vt) = has_secret_vk(&self, &store.vt);
+            if is_ {
+                return Err(PyException::new_err("There is a secret too much."));
+            }
+            vt
+        };
+        let a: &[u8] = self.vault.get(&vt_a).expect("WTF??").expose();
+        let b: &[u8] = self.vault.get(&vt_b).expect("WTF??").expose();
+        let added: Vec<u8> = ascii_addition_bytes(&[a, b]);
+        self.vault.add(store, added).map_err(|e| PyException::new_err(format!("Error at storing: {:?}", e)))?;
+        Ok(())
+    }
+
     pub fn add_secret(&mut self, key: PyRef<PyVaultType>, secret: &[u8]) -> PyResult<()> {
         let vt = copy_vt(&key.vt);
         self
@@ -374,7 +403,7 @@ impl Encryptor {
 
         let sec_a: &Secret = self.vault.get(&vt_a).expect("WTF ARE YOU ACTUALLY DOING???");
         let sec_b: &Secret = self.vault.get(&vt_b).expect("WTF ARE YOU ACTUALLY DOING???");
-        
+
         Ok(sec_a == sec_b)
     }
 }
