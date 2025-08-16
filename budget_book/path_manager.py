@@ -7,7 +7,7 @@ from budget_book.errors import BaseError
 
 def get_path_abs(relative_path: str) -> str:
     """
-    Returns the absolute path of a file or folder relative to scripts.py.
+    Returns the absolute path of a file or folder relative to path_manager.py.
 
     :param relative_path: Relative path to the file or folder.
     :return: Absolute path.

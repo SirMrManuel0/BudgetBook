@@ -198,6 +198,25 @@ impl Encryptor {
         Ok(self.vault.get(&key).expect("WTFFF???").expose().to_vec())
     }
 
+    pub fn encrypt_key_and_more(&mut self, plaintext: &[u8], from: PyRef<PyVaultType>, nonce: Option<&[u8]>, aad_opt: Option<&[u8]>,
+        key: Option<PyRef<PyVaultType>>) -> PyResult<(Vec<u8>, Vec<u8>)> {
+        let vt_from = {
+            let (is_, vt) = has_secret_vk(&self, &from.vt);
+            if !is_ {
+                return Err(PyException::new_err("There is no key to encrypt."));
+            }
+            vt
+        };
+        let secret_: &[u8] = self.vault.get(&vt_from).expect("WTFFF????").expose();
+        let mut plain: Vec<u8> = Vec::with_capacity(plaintext.len() + secret_.len());
+        plain.extend_from_slice(secret_);
+        plain.extend_from_slice(plaintext);
+        let (nonce_, ciphertext) = self.encrypt_chacha(&plain, nonce, aad_opt, key)
+            .map_err(|e| PyException::new_err(format!("There was an error at encryption: {:?}", e)))?;
+        plain.zeroize();
+        Ok((nonce_, ciphertext))
+    }
+
     /// Return: Nonce, Ciphertext as bytes
     pub fn encrypt_chacha(&mut self, plaintext: &[u8], nonce: Option<&[u8]>, aad_opt: Option<&[u8]>,
         key: Option<PyRef<PyVaultType>>) -> PyResult<(Vec<u8>, Vec<u8>)> {
@@ -405,5 +424,35 @@ impl Encryptor {
         let sec_b: &Secret = self.vault.get(&vt_b).expect("WTF ARE YOU ACTUALLY DOING???");
 
         Ok(sec_a == sec_b)
+    }
+
+    pub fn decrypt_into_key(&mut self, store: PyRef<PyVaultType>, key: PyRef<PyVaultType>, nonce: &[u8], ciphertext: &[u8], aad_opt: Option<&[u8]>) -> PyResult<Vec<u8>> {
+        let mut plaintext: Vec<u8> = self.decrypt_chacha(ciphertext, nonce, aad_opt, key)
+            .map_err(|e| PyException::new_err(format!("There was an error during decryption: {:?}", e)))?;
+        let dec_key: &[u8] = &plaintext[..32];
+        self.add_secret(store, dec_key, false).map_err(|e| PyException::new_err(format!("Error during key storing: {:?}", e)))?;
+        let nonce: Vec<u8> = plaintext[32..].to_vec();
+        plaintext.zeroize();
+        Ok(nonce)
+    }
+
+    pub fn is_secret(&self, key: PyRef<PyVaultType>) -> PyResult<bool> {
+        let (is_, _) = has_secret_vk(&self, &key.vt);
+        Ok(is_)
+    }
+
+    pub fn get_public_key(&self, private: PyRef<PyVaultType>) -> PyResult<Vec<u8>> {
+        let vt: VaultType = {
+            let (is_, vt) = has_secret_vk(&self, &private.vt);
+            if !is_ { return Err(PyException::new_err("There is no private key.")); }
+            vt
+        };
+        let pub_key: PublicKey = {
+            let bytes: &[u8] = self.vault.get(&vt).expect("HOWWWW?????!!!!").expose();
+            let priv_: StaticSecret = bincode::deserialize(bytes).map_err(|e| PyException::new_err(format!("Deserilization failed: {:?}", e)))?;
+            let pub_: PublicKey = PublicKey::from(&priv_);
+            pub_
+        };
+        Ok(pub_key.to_bytes().to_vec())
     }
 }

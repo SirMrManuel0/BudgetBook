@@ -44,35 +44,27 @@ class FileManager:
             bin_ = f.read()
         return Converter.byte_to_b64(bin_)
 
-    def read(self, file_path: Optional[str] = None, validator_len: int = 32,
-             key_len: int = 32, nonce_len: int = 12, salt_len: int = 16, header_len: int = 256)\
-            -> Union[tuple[str, str], tuple[str, str, str, str], tuple[str, str, str]]:
+    def read(self, file_path: Optional[str] = None, nonce_len: int = 24,
+             salt_len: int = 16) -> Union[tuple[str, str], tuple[str, str, str, str], tuple[str, str, str], str]:
         """
 
-        :param header_len:
         :param salt_len:
-        :param key_len:
         :param nonce_len:
         :param file_path:
-        :param validator_len:
         :return: content, hash or header, content | all as b64
         """
         path = self._path_setter(file_path=file_path)
         with open(path, "rb") as f:
             bin_ = f.read()
         if path.endswith(".ej"):
-            header = bin_[:header_len]
-            data = bin_[header_len:]
-            return Converter.byte_to_b64(header), Converter.byte_to_b64(data)
+            return Converter.byte_to_b64(bin_)
         elif path.endswith(".k_hb"):
             salt = bin_[:salt_len]
             nonce = bin_[salt_len:salt_len+nonce_len]
             key = bin_[salt_len+nonce_len:]
             return Converter.byte_to_b64(salt), Converter.byte_to_b64(nonce), Converter.byte_to_b64(key)
         else:
-            validator = bin_[-validator_len:]
-            rest = bin_[:-validator_len]
-            return Converter.byte_to_b64(rest), Converter.byte_to_b64(validator)
+            return Converter.byte_to_b64(bin_)
 
     def write(self, data: bytes, file_path: Optional[str] = None):
         path = self._path_setter(file_path=file_path, must_exist=False)

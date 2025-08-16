@@ -28,6 +28,11 @@ def test_de_encrypt(vt: VaultType, plain: bytes, key: bytes, nonce: bytes, aad_o
     no, ciphertext = encryptor.encrypt_chacha(plain, nonce, aad_opt, vt)
     if expected is not None and nonce is not None:
         assert ciphertext == expected
+    with pytest.raises(Exception):
+        encryptor.decrypt_chacha(
+            ciphertext, no, vt,
+            b"Hello" if aad_opt is None else None
+        )
     vt = vt if vt is not None else VaultType.chacha_key()
     decrypted = encryptor.decrypt_chacha(ciphertext, no, vt, aad_opt)
     assert plain == decrypted
@@ -157,3 +162,65 @@ def test_ascii_add(a: bytes, b: bytes, expected: bytes):
     if expected is not None:
         assert result == expected
 
+@pytest.mark.parametrize(
+    "key,nonce,ciphertext,aad,expected_key,expected_nonce",
+    [
+        (Converter.b64_to_byte("YWXcYFmd08hl+STfBb6ghzWQu9ldkiQmD+BKYWUShEs="), Converter.b64_to_byte("FSPSBR3e68Fk/mAT/Koy93oOIg6oQWxO"),
+         Converter.b64_to_byte("A5o/YF9yNkqHUDkGssJAXwaXiH45xRnimhiUwHpK3OH4Nc9V23p7rY2/B0mezs093haRn2EcdgSFloTQaSMaCr2VFfxXr9cq"),
+         None, Converter.b64_to_byte("+68cMi1ZqsgU2mJYJPpzG3U5qGslHnYfJdP59abud8E="), Converter.b64_to_byte("zIA6l+vfFFhMF4W0HallXscvQe6WLucS")),
+        (Converter.b64_to_byte("h6Y+SB7fbToP4Ylgo460XGuHpktUgU85c0YstOKiVsE="), Converter.b64_to_byte("i03cMkLwtUTZU4QkHvlykFWnV7i3WgZ4"),
+         Converter.b64_to_byte("+Ce2qNiYNZG6k9U7Yq/Feh6U7wn+AE/NcOZ+goa4RUGKoZLkAqgrPRbY0ALYZB2zPaQHR9I9ed3NhF2zdC6MfM8x17xWqdzK"),
+         None, Converter.b64_to_byte("vW5rRJt63Ie9m15FehlqCfyc3m5Z8Ggg1z4IsDxd0Mw="), Converter.b64_to_byte("RywIjTnbEwqcE67hxA5n4IToyTGLgR8p")),
+         (Converter.b64_to_byte("CDGM2k/gHhRMz5aE1eUcmkRK5eMTOWROUd+PrJBcvt4="), Converter.b64_to_byte("X6rjaHDDOsE3o9jvTSrpXmpeB4fWmI8o"),
+          Converter.b64_to_byte("K2k5CQtER+93ZVkECa2CtUygDU4+e8p0BgiXgEyf9o9b+vmhKzIkggT7coZu7OYaK8BRVMjxPIzVjp/64wWuU1qBVoiscTuB"),
+          None, Converter.b64_to_byte("svTnEmrONzEn1NVLcOZUZc8135twhCWuE0rP4qBFiNM="), Converter.b64_to_byte("7hv7sG8wl6Ic8qiEITRwKY8vkapBsIX1")),
+        (Converter.b64_to_byte("ueNnLTls8NQ7uUmJAD6j1bc4kmE0xKQOrvZ8lQidMmE="), Converter.b64_to_byte("J0/ZDsj9ntUEn0xTqdqTVxDR8M+JNFL7"),
+         Converter.b64_to_byte("kSA3LKjdcf0G5kZ5aonhYwTdbR1SxXenk+/mXwW4vXcsAaaxOesOAeCnwOPdOl3mw6E17fi4JjzxAz1SLa2ltFaSYPMwoJFy"),
+         b"some aad", Converter.b64_to_byte("37lqUi3ClOipLcVQZgqgTHmeHk1NUeXg6/hsmUjxfQM="), Converter.b64_to_byte("NV2RyXxWqmdOScVGfekoDiNjLXg2TjEF")),
+        (Converter.b64_to_byte("0wAh1nkhtVTFypWBE2b7uPrN3ZqErah8+V/ivPvbzxg="), Converter.b64_to_byte("mEXc/JdAElGTv5yrbSyhRZ9xgDJMXlHp"),
+         Converter.b64_to_byte("MUFUgY+4h8WMcdRg59p/jYbBjUWZVaYtoiU32jhN3ek89nWKq/ZGmWK3FSrSsdxZGgElknUwQ8hQNI88VW9islAHga5wwRzB"),
+         b"What would you put in here?", Converter.b64_to_byte("hWsjoM+rk8CdluHUhzvwqXoAr/llB3r4BC9E6au1JBk="), Converter.b64_to_byte("Sp0aPXY4jK7sZdCl/33yzXCoC4/v7oAj"))
+    ]
+)
+def test_decrypt_into_key(key: bytes, nonce: bytes, ciphertext: bytes, aad: bytes, expected_key: bytes, expected_nonce: bytes):
+    encryptor = RustEncryptor(True)
+    encryptor.add_secret(VaultType("from here"), key)
+    expected = (expected_key, expected_nonce)
+    #to_enc = expected[0] + expected[1]
+    #_, ciph = encryptor.encrypt_chacha(to_enc, nonce, aad, VaultType("from here"))
+    #print(Converter.byte_to_b64(ciph))
+    #assert 0 == 0
+    nonce = encryptor.decrypt_into_key(ciphertext, nonce, VaultType("store_here"), VaultType("from here"), aad)
+    assert nonce == expected[1]
+    sec = encryptor.get_secret(VaultType("store_here"), True)
+    assert sec == expected[0]
+
+@pytest.mark.parametrize(
+    "key_to_enc,key,nonce,extra,aad,expected",
+    [
+        (Converter.b64_to_byte("VaKFShOomVPGLYVuIZ15xRCgEy7fFNMoZMbufzVjqGQ="), Converter.b64_to_byte("Viv/0pjTu2bL7MGg7VcGjV0+WhLLgL0imVsmoFhGSnM="),
+         Converter.b64_to_byte("zfttLK9Liw9nJHyh3OK4c9pq9JfBUCbI"),
+         Converter.b64_to_byte("UfbOfwwT+7F07ayZxAk1S6z9GXzBgk7eJQPcdWZz7mcrz6w24+/0dcixXsPd7Tik0S+1pO2L8KjsvoY6YNGPNw=="),
+         b"This is an aad",
+         Converter.b64_to_byte("nXkurMVDHvzqAW/p1lucQAgbJ5/jUf3gkvYy9WU4ps6drewaCDYr7JmclPqp0JyJ3Q7KpiJYSJYC44bATSzTIe2KtsjJVlStM654QBJZl80mAkh7vrvR7KpURUjJxtGK5gGAWea6Zx/7JyDokErp6A==")),
+        (Converter.b64_to_byte("7gn7mz0LDGZJYKY7DVbeYUNV/WXuXDUJ2K/rS8l1KXA="), Converter.b64_to_byte("ksNpCelVsg/Ep38NOHuoBYXZQFW/CWzSrqAVTzYNXmE="),
+         Converter.b64_to_byte("89fvBnzNcxrIkbUmc9vIWUtE3tqIVstz"),
+         Converter.b64_to_byte("rLl6d87YWheaVETQvHb3viVLRgZh1KZtVq/vSxoZHYLAqMj8IF7uf6UVAxs70KlE5hLddYEHQZS+KkG/eKXcQQ=="),
+         None,
+         Converter.b64_to_byte("2pVE8qqHBZK3+yVxP0bFKNgb0Uz51JfRBmSh8uCdTMuVL6Tsv8REqnfJjlVSyPrYDvNCl8synPTxSvcomUpItnZyutzjdcwyCPIKdYWxy9imGxlkUeZd6p3750dOem2DIs2UH6nnTA9SUGjt5VJfUA==")),
+        (Converter.b64_to_byte("/3SVUd3ARI4pZOIT1y8qJO89Mc7VBOX2681rVyej/O0="), Converter.b64_to_byte("hXEKgkljZF59fvADaS/+ulk62IZ2wCzgXY1wY4YW9No="),
+         Converter.b64_to_byte("HBD+LrZPfet8rWCFDOdQPMqXozuIvmAJ"),
+         Converter.b64_to_byte("TLvHZCG3s4fagH279AmYhbFbAvlyLwWMZSNDPJ2dE5ul4Ck5afIET4BW7NS2AKfAXPTix4A/EkO5vVTBG2A0mw=="),
+         b"Where am I?",
+         Converter.b64_to_byte("ktHeFSK0J4bps9Q7fjQjP8TtD3M41EbFy5Tkyb2L+6ov0dCUl7tVbzDxppHp24uFWgA7GsYq0NsN/SxqRfwG0lmSMmrIrDvpWidHnbvXSNhncaX5o0+xH1R9uHP3CY1gHPcR6LX3LLeTnCC0ta9F+g=="))
+    ]
+)
+def test_encrypt_key_and_more(key_to_enc: bytes, key: bytes, nonce: bytes, extra: bytes, aad: bytes, expected: bytes):
+    encryptor = RustEncryptor(True)
+    encryptor.add_secret(VaultType("to encrypt"), key_to_enc)
+    encryptor.add_secret(VaultType("key encrypts"), key)
+    nonce, ciph = encryptor.encrypt_key_and_more(extra, VaultType("to encrypt"), nonce, aad, VaultType("key encrypts"))
+    dec = encryptor.decrypt_chacha(ciph, nonce, VaultType("key encrypts"), aad)
+    assert key_to_enc + extra == dec
+    if expected is not None:
+        assert ciph == expected

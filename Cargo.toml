@@ -23,5 +23,10 @@ hkdf = "0.12"
 x25519-dalek = {version = "2", features = ["static_secrets", "serde"]}
 bincode = "1"
 
+[dependencies.oqs]
+version = "0.11.0"
+default-features = false
+features = ["sigs", "kems", "serde"]
+
 [package.metadata.maturin]
 name = "mfence"

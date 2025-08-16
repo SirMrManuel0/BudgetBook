@@ -1,3 +1,5 @@
+import secrets
+
 from mfence import Encryptor, PyVaultType
 
 class VaultType:
@@ -263,3 +265,48 @@ class RustEncryptor:
         :return:
         """
         return self._encryptor.ascii_add_secrets(store.inner, a.inner, b.inner)
+
+    def decrypt_into_key(self, ciphertext: bytes, nonce: bytes, store: VaultType, key: VaultType,
+                         aad_opt: bytes = None) -> bytes:
+        """
+        This function decrypts with XChaCha20 Poly1305 and saves the key in the vault.
+
+        Note the structure of the ciphertext needs to be:
+
+        key (32 bytes) + nonce (24 bytes)
+
+        :param ciphertext: The ciphertext should be given as bytes in the format as seen above.
+        :param nonce: The nonce must be 24 bytes.
+        :param store: This is the VaultType reference to the decrypted key.
+        :param key: This is the VaultType reference to the key, which decrypts.
+        :param aad_opt: The aad only needs to be given, if it was present during encryption. It should be passed as bytes.
+        :return: It returns the nonce as bytes
+        """
+        return self._encryptor.decrypt_into_key(store.inner, key.inner, nonce, ciphertext, aad_opt)
+
+    def encrypt_key_and_more(self, extra: bytes, from_key: VaultType,
+                             nonce: bytes = None, aad_opt: bytes = None, key: VaultType = None) -> tuple[bytes, bytes]:
+        """
+        This method is used to add more stuff when encrypting a key.
+
+        The addition will be in the format of:
+
+        key + extra data
+
+        :param extra: The extra data to be encrypted as bytes.
+        :param from_key: The VaultType reference to the key, which shall be encrypted.
+        :param nonce: The nonce can be given as bytes.
+        :param aad_opt: The aad can be given as bytes. If it is given, it MUST be given at decryption.
+        :param key: The VaultType reference to the key which shall be encrypted. (If none is given VaultType.chacha_key() is the default)
+        :return: It returns in the same order: nonce, ciphertext both as bytes.
+        """
+        return self._encryptor.encrypt_key_and_more(extra, from_key.inner, nonce, aad_opt, key.inner)
+
+    def get_public_key(self, private_key: VaultType) -> bytes:
+        """
+        This function returns the public key of the corresponding private key.
+
+        :param private_key: The VaultType reference which points at the private key.
+        :return: It returns the public key as bytes.
+        """
+        return self._encryptor.get_public_key(private_key.inner)
