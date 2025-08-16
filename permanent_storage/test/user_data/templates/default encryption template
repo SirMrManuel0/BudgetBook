@@ -1,0 +1,6 @@
+
+Version 1:
+    version length (3 bytes) + version (any bytes) + encryption_header length (3 bytes)
+    + encrytion_header (any bytes) + aad_opt length (3 bytes) + aad_opt (any bytes)
+    + public key (32 bytes) + salt (32 bytes) + nonce for the key (24 bytes)
+    + key and nonce for the data (32 bytes + 24 bytes + 16 bytes) + data (any bytes)

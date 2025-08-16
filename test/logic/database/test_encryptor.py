@@ -1,118 +1,80 @@
 import hashlib
 
 import pytest
+
+from budget_book import VaultType
 from budget_book.logic.database.encryptor import Encryptor, Converter, HashingAlgorithm
 
-
 @pytest.mark.parametrize(
-    "inputs,expected,custom_check",
+    "username,userkey_name,salt_,expected",
     [
-        # test_basic_addition
-        ((b"abcd", b"\x01\x01\x01\x01"), b"bcde", None),
-
-        # test_wraparound_mod_256
-        ((b"\xFF\xFF", b"\x01\x01"), b"\x00\x00", None),
-
-        # test_multiple_additions (equality between two runs)
-        ((b"hello world!", b"abc"), None, lambda out: out == Encryptor._ascii_addition_bytes(b"hello world!", b"abc")),
-
-        # test_uneven_lengths
-        ((b"123456789", b"ab", b"XY"), None, lambda out: isinstance(out, bytes) and len(out) == 9),
-
-        # test_with_empty
-        ((b"abcdef", b""), b"abcdef", None),
-
-        # test_only_one_argument
-        ((b"single",), b"single", None),
-
-        # test_all_same_length
-        ((b"1111", b"2222", b"3333"), None, lambda out: isinstance(out, bytes) and len(out) == 4),
-
-        # test_result_type_and_length
-        ((b"longest string wins", b"short"), None, lambda out: isinstance(out, bytes) and len(out) == len(b"longest string wins")),
+        (b"BOB", "username", "gH/hjB59ZDcQgyIhkbqDC4/R/HRW5kggddUKYsKwTNg=", "LMqaKLroocfAGa/ORio0vbdiS2veNNza/qqeJcE3dhI="),
+        (b"John", "userkey", "dbdWfcK3kyxL5avx5JIDsYVTPQkqXH00KeoGn1v5oqs=", "ZWLDCpOdrM0zZ++/tJDuf9NVtX4RKayhyonFuFAUqv0="),
+        (b"Marie :)", "usercan", "cDCfpk/s5oUsG3EAsaS74sguudHz3O1OwPD5vJLHip8=", "/RPH98D76ZaWDnN490HojPsBxRSCGs8KXB5YeEaQPu8="),
+        (b"Valerie", "i am not creative enough", "lWokscBf1/FJ3622WVu8/UPUPQTpae8xVaIDJh4/5PU=", "uCoHlRUWfKnJUSRmb05vM8jMJika9LvA3ZkgeiZem/E=")
     ]
 )
-def test_ascii_addition_bytes(inputs, expected, custom_check):
-    result = Encryptor._ascii_addition_bytes(*inputs)
-    if custom_check is not None:
-        assert custom_check(result)
-    else:
-        assert result == expected
-
-@pytest.mark.parametrize(
-    "username,salt_,expected",
-    [
-        (b"BOB", "8GIB0nWfBIpu+nwuo/Wiqg==", "4gXItT7UElI54BDjpIHfaDphLM4oZc7W1H9R7Veq2lM="),
-        (b"John", "Qbaf5hrwHGNviSKP+v71/w==", "SWsk8Rt9xx8WbeggY9QUNu5HhkTnYMhjk8/1usFUKVM="),
-        (b"Marie :)", "5LpsadjfH4SIovl6oA2hqA==", "HEd6rO1Z/wp+9960zavpXbD9JQZeHsBcixWJErUN8xE="),
-        (b"Valerie", "vejTfpREG3JRPbuuw5Yuqw==", "u2OzXzcG2NLT5yHKTCUjJvOOFTfKmeDry+7IWx/qWhc=")
-    ]
-)
-def test_generate_username_key(username, salt_, expected):
+def test_generate_username_key(username, userkey_name, salt_, expected):
     salt_ = Converter.b64_to_byte(salt_)
-    key, salt = Encryptor(True).generate_username_key(username, salt=salt_)
-    assert Converter.byte_to_b64(key) == expected and salt == salt_
+    e = Encryptor(True, test=True)
+    salt = e.generate_username_key(userkey_name, salt_)
+    #a = e._access_encryptor()
+    #print(Converter.byte_to_b64(a.get_secret(VaultType(userkey_name), True)))
+    assert e.compare_with_secret(VaultType(userkey_name), Converter.b64_to_byte(expected))
+    assert salt == salt_
 
 @pytest.mark.parametrize(
     "username,salt_,nonce_,expected",
     [
-        (b"BOB", "8GIB0nWfBIpu+nwuo/Wiqg==", "ZJjRIavpNbVg9E1wb7pe4pA5C10tvtW4DAdvyUeGQBc=", "M7rc"),
-        (b"John", "Qbaf5hrwHGNviSKP+v71/w==", "7hpvhw0h4WGcs0mmI7VKa9ZFTon/bZG/zPv94uajx8E=", "hUbLWg=="),
-        (b"Marie :)", "5LpsadjfH4SIovl6oA2hqA==", "iAjDj3/vfmeDFytQA7oKa4DHU2uQsYoMvSNrbmhVgD0=", "Fg0SaOm/cqI="),
-        (b"Valerie", "vejTfpREG3JRPbuuw5Yuqw==", "89wEGJ5OTno72Aoj1RbIkH9UsUrpNmRLSb1pxHrJibA=", "hcCSV3+Xuw==")
+        (b"BOB", "GXbQzmplolDL4ljQ00nhzcfa8oTnDDA2/44ziFCF2K0=", "5ud1YOfGmSBfNiACD53Yd6GRoFEBlY4j", "cxsqj9hmtKsSaHlplvf22M5rPA=="),
+        (b"John", "UHx6ilJKfTSFiJu4nPDA6X0GLq2/37L4WhQqbSxxkjg=", "LgDHXTaWsM4BPHlzrXYO6G/uGz8Jua8s", "X6Ax4PmKQKwo9TJgcDN6RcrpBYE="),
+        (b"Marie :)", "mjLO6K1jOKWewTV+JG5Pk98PRk47vs9DwZi+Eh8N15U=", "pptveTpkE0zBePbt1dafbxT8KOvHrYN6", "Qbj+FEp1owdX8DdZlscicbNKGJYJVwkC"),
+        (b"Valerie", "o0iC2Qh21rMc0tWrs5uI7a1xsgGmgQ2Eb5+529VmKAo=", "idTZcmnxBNhpVPOHLyHNIdK0VYLScJxE", "WeR1Qu5bS7+mt3XVuXFJOP3iIfzV4FY=")
     ]
 )
 def test_encrypt_username(username, salt_, nonce_, expected):
     salt_ = Converter.b64_to_byte(salt_)
     nonce_ = Converter.b64_to_byte(nonce_)
-    en_username, nonce, *_ = Encryptor(True).encrypt_username(username, salt=salt_, nonce=nonce_)
-    assert Converter.byte_to_b64(en_username) == expected
+    encryptor = Encryptor(True, test=True)
+    ciphertext, nonce, _ = encryptor.encrypt_username(username, salt_, nonce_)
+    #print(Converter.byte_to_b64(ciphertext))
+    assert Converter.byte_to_b64(ciphertext) == expected
     assert nonce == nonce_
 
 @pytest.mark.parametrize(
-    "en_username,nonce_,tag,salt_,expected",
+    "en_username,nonce_,salt_,expected",
     [
-        ("M7rc", "ZJjRIavpNbVg9E1wb7pe4pA5C10tvtW4DAdvyUeGQBc=", "kVVY7JxQO/sKZ6kCco4iww==", "8GIB0nWfBIpu+nwuo/Wiqg==", b"BOB"),
-        ("hUbLWg==", "7hpvhw0h4WGcs0mmI7VKa9ZFTon/bZG/zPv94uajx8E=", "C4V4ii/+m/PIciVLofYq0w==", "Qbaf5hrwHGNviSKP+v71/w==", b"John"),
-        ("Fg0SaOm/cqI=", "iAjDj3/vfmeDFytQA7oKa4DHU2uQsYoMvSNrbmhVgD0=", "k7YxX9I7y7AFhPXnoFTV5A==", "5LpsadjfH4SIovl6oA2hqA==", b"Marie :)"),
-        ("hcCSV3+Xuw==", "89wEGJ5OTno72Aoj1RbIkH9UsUrpNmRLSb1pxHrJibA=", "vWUnMI3WZygCzaQ6xXY/nQ==", "vejTfpREG3JRPbuuw5Yuqw==", b"Valerie")
+        ("cxsqj9hmtKsSaHlplvf22M5rPA==", "5ud1YOfGmSBfNiACD53Yd6GRoFEBlY4j", "GXbQzmplolDL4ljQ00nhzcfa8oTnDDA2/44ziFCF2K0=", b"BOB"),
+        ("X6Ax4PmKQKwo9TJgcDN6RcrpBYE=", "LgDHXTaWsM4BPHlzrXYO6G/uGz8Jua8s", "UHx6ilJKfTSFiJu4nPDA6X0GLq2/37L4WhQqbSxxkjg=", b"John"),
+        ("Qbj+FEp1owdX8DdZlscicbNKGJYJVwkC", "pptveTpkE0zBePbt1dafbxT8KOvHrYN6", "mjLO6K1jOKWewTV+JG5Pk98PRk47vs9DwZi+Eh8N15U=", b"Marie :)"),
+        ("WeR1Qu5bS7+mt3XVuXFJOP3iIfzV4FY=", "idTZcmnxBNhpVPOHLyHNIdK0VYLScJxE", "o0iC2Qh21rMc0tWrs5uI7a1xsgGmgQ2Eb5+529VmKAo=", b"Valerie")
     ]
 )
-def test_decrypt_username(en_username, nonce_, tag, salt_, expected):
+def test_decrypt_username(en_username, nonce_, salt_, expected):
     nonce_ = Converter.b64_to_byte(nonce_)
     salt_ = Converter.b64_to_byte(salt_)
-    tag = Converter.b64_to_byte(tag)
     en_username = Converter.b64_to_byte(en_username)
-    user_key, _ = Encryptor(True).generate_username_key(expected, salt=salt_)
-    plain = Encryptor(True).decrypt_username(en_username, nonce_, tag, user_key)
+    encryptor = Encryptor(True, test=True)
+    plain = encryptor.decrypt_username(en_username, salt_, nonce_)
     assert plain == expected
 
 @pytest.mark.parametrize(
-    "data,nonce,expected",
+    "data,nonce,aad,enc_header",
     [
-        (b"Alles ist super", "bTeT10RozAMaONJN/kYt9+WrZ4U1ovdEYzXHlYW+OWo=", "bTeT10RozAMaONJN/kYt9+WrZ4U1ovdEYzXHlYW+OWqGTeyS2XGMYNjxKHnFbIE6MTi5ve5kOHmKm3Oq3pQH"),
-        (b"Wo ist meine Cola?", "1j27sV1JRItbxG1+d7S5llyAfTvxeD8Rh2cn0Sq8C64=", "1j27sV1JRItbxG1+d7S5llyAfTvxeD8Rh2cn0Sq8C64KgDsSbdOCikcj29MkVG22lQAfiMyXtEvHkjlUHfSa6dnq"),
-        ("Meine Chicken Nuggets verbrennen 🔥🔥🔥".encode(), "y8M5okQ3jeh9NgSBXHeBgaC+V03n1UbnvPlmNYf0GPo=", "y8M5okQ3jeh9NgSBXHeBgaC+V03n1UbnvPlmNYf0GPrzfGRZrIjHkBMBqOyKhf43Uy49yT4iftzu13KgZOpeh0Xv9LXQvnNpjgFkFsJCCyw9dF7Rnhk4p573hBWq"),
-        (b"Wo... wo bin ich?", "cq8Io6lz+KiokVPu7byOeoG279SNsfAx1AbEBdiKUs0=", "cq8Io6lz+KiokVPu7byOeoG279SNsfAx1AbEBdiKUs1d/Q7MEeJr/fBAUjfnLmv/rSsD/Xwwx7nooIGfU/9rEiA=")
+        (b"Alles ist super", "nFnaoZaf2M3MGA5Dx0g1K9f1M3qOFndN", b"This is an informatial header", b"Some sort of header ig"),
+        (b"Wo ist meine Cola?", "jqDO/Di4zq2ogvX6rZJKt2Z/+89AXIgF", b"Headers can be important", b"a header can only save non-secrets"),
+        ("Meine Chicken Nuggets verbrennen 🔥🔥🔥".encode(), "HmqKb9eq4jFAYybFywrW+2lmUA6P96eI", b"ups, forgot the aad", b"a header has mostly genereic info"),
+        (b"Wo... wo bin ich?", "ZIuaPfgsMAIl5IN46ynWbj0TP+qNKPpl", b"hmmm, this could be useful", b"i am not wise enough for another")
     ]
 )
-def test_encrypt_system_data(data, nonce, expected):
+def test_de_encrypt_system_data(data, nonce, aad, enc_header):
+    encryptor = Encryptor(True, test=True)
     nonce = Converter.b64_to_byte(nonce)
-    all_ = Encryptor(True).encrypt_system_data(data, nonce=nonce)
-    assert all_ == Converter.b64_to_byte(expected)
-
-@pytest.mark.parametrize(
-    "en_data,expected",
-    [
-        ("bTeT10RozAMaONJN/kYt9+WrZ4U1ovdEYzXHlYW+OWqGTeyS2XGMYNjxKHnFbIE6MTi5ve5kOHmKm3Oq3pQH", b"Alles ist super"),
-        ("1j27sV1JRItbxG1+d7S5llyAfTvxeD8Rh2cn0Sq8C64KgDsSbdOCikcj29MkVG22lQAfiMyXtEvHkjlUHfSa6dnq", b"Wo ist meine Cola?"),
-        ("y8M5okQ3jeh9NgSBXHeBgaC+V03n1UbnvPlmNYf0GPrzfGRZrIjHkBMBqOyKhf43Uy49yT4iftzu13KgZOpeh0Xv9LXQvnNpjgFkFsJCCyw9dF7Rnhk4p573hBWq", "Meine Chicken Nuggets verbrennen 🔥🔥🔥".encode()),
-        ("cq8Io6lz+KiokVPu7byOeoG279SNsfAx1AbEBdiKUs1d/Q7MEeJr/fBAUjfnLmv/rSsD/Xwwx7nooIGfU/9rEiA=", b"Wo... wo bin ich?")
-    ]
-)
-def test_decrypt_system_data(en_data, expected):
-    plain = Encryptor(True).decrypt_system_data(Converter.b64_to_byte(en_data))
-    assert plain == expected
+    en_data = encryptor.encrypt_system_data(data, nonce, aad, encryption_header=enc_header)
+    _, plain, encryption_header, aad_ = encryptor.decrypt_system_data(en_data)
+    assert plain == data
+    assert encryption_header == enc_header
+    assert aad == aad_
 
 def test_validate_hash():
     message = b"my pants are on fire"
@@ -132,33 +94,33 @@ def test_validate_hash():
     ]
 )
 def test_recreate_hash(pw, salt, expected):
-    assert Encryptor.recreate_hash(Converter.utf_to_byte(pw), Converter.b64_to_byte(salt)) == expected
-
-def test_private_key():
-    e = Encryptor(True)
-    key = e.create_private_key()
-    serialized = e.serialize_private_key(key)
-    deserialized = e.deserialize_private_key(serialized)
-    assert key.private_numbers() == deserialized.private_numbers()
+    e = Encryptor(True, test=True)
+    e.add_secret(VaultType("cool"), Converter.utf_to_byte(pw))
+    assert e.recreate_hash("cool", Converter.b64_to_byte(salt)) == expected
 
 @pytest.mark.parametrize(
-    "pw,a",
+    "data,aad_opt,encryption_header",
     [
-        (b"Ich backe Kuchen", ""),
-        (b"Meine Chickennuggets verbrennen", ""),
-        (b"Peterle ist ein Dorfkind", ""),
-        (b"superSecure1234567899897984198/463841+-968496932q543", ""),
-        (b"Wo ist die erde?", "")
-
+        (b"some data ig", b"whatever an aad is", b"an ... encryptin header? whats that lol"),
+        (b"some data ig", b"whatever an aad is", None),
+        (b"some data ig", None, b"an ... encryptin header? whats that lol"),
+        (b"some data ig", None, None),
+        (Converter.b64_to_byte("gUxW+lp9rH9lEAOWg5/qEdhIcy6lF0j9s28N6xE7JNwm+Ro6dwi9nd6magB0OubtqrkGkMjq8wu2MrR0ohprkriSBMt7LO17b9ibYPqM26NAGgsfYCEufNL3XTmP43bq9zLONZ8dAs2DcjJTIkrtmgrq+Ffk1p2WF7fezdOKownsQ+CGURQT1EQ3mqUt/4LEM9PRsYrMhdJCgGbikhODrz+pYbKrpOuDG2J/r4RAPgkcDw20copvm6/1rWSXJxXkid79Or1yJZNY6pQzdcYaHeFzFi2YBiFPDkEU9qjD09G9dVNPffFva5eXUC3Jhwp7OZXf9qpyDVjHpNQ+EiOuSU+QxsK/pYwaS0svTnipXzFjQS4S464Q+xf4If8jP9Cnr8MUtm146Yg0VqhkIYHS6bb+ACYMJsIUivcBN/wponMXfJRrFmEOIYyfz9nMmjFixg9Q+MWhhAbkPcho7kYG+p5FQHLD7LBq4I6nAKzaqPbci6mGLkbL30QHFzBEi5R5Dt1p/nkO3fOUjDbi/ROxuYjRQ6aMe3Lbvr6YutHH3RdAcGTxcG4Wod8ONpmd7y8HyK+3pUSQN/DVnr7nO5+OvYK5BUr8z45NfxbwZVnoDi8BAFSc4xHniVjLWUtZjjv6D2xzGh6luAmS0tC64DQ2rm5AQpdyHhMDf2cRc+FvgiY="),
+         None, None),
+        (Converter.b64_to_byte("gUxW+lp9rH9lEAOWg5/qEdhIcy6lF0j9s28N6xE7JNwm+Ro6dwi9nd6magB0OubtqrkGkMjq8wu2MrR0ohprkriSBMt7LO17b9ibYPqM26NAGgsfYCEufNL3XTmP43bq9zLONZ8dAs2DcjJTIkrtmgrq+Ffk1p2WF7fezdOKownsQ+CGURQT1EQ3mqUt/4LEM9PRsYrMhdJCgGbikhODrz+pYbKrpOuDG2J/r4RAPgkcDw20copvm6/1rWSXJxXkid79Or1yJZNY6pQzdcYaHeFzFi2YBiFPDkEU9qjD09G9dVNPffFva5eXUC3Jhwp7OZXf9qpyDVjHpNQ+EiOuSU+QxsK/pYwaS0svTnipXzFjQS4S464Q+xf4If8jP9Cnr8MUtm146Yg0VqhkIYHS6bb+ACYMJsIUivcBN/wponMXfJRrFmEOIYyfz9nMmjFixg9Q+MWhhAbkPcho7kYG+p5FQHLD7LBq4I6nAKzaqPbci6mGLkbL30QHFzBEi5R5Dt1p/nkO3fOUjDbi/ROxuYjRQ6aMe3Lbvr6YutHH3RdAcGTxcG4Wod8ONpmd7y8HyK+3pUSQN/DVnr7nO5+OvYK5BUr8z45NfxbwZVnoDi8BAFSc4xHniVjLWUtZjjv6D2xzGh6luAmS0tC64DQ2rm5AQpdyHhMDf2cRc+FvgiY="),
+         b"Some extreeeemly", b"loooong data"),
     ]
 )
-def test_encrypt_and_decrypt_private_key(pw, a):
-    e = Encryptor(True)
-    private_key = e.create_private_key()
-    enc, salt, nonce = e.encrypt_private_key(bytearray(pw), private_key)
-    dec = e.decrypt_private_key(bytearray(pw), enc, nonce, salt)
-    des = e.deserialize_private_key(dec)
-    assert private_key.private_numbers() == des.private_numbers()
+def test_en_decrypt_file(data: bytes, aad_opt: bytes, encryption_header: bytes):
+    encryptor = Encryptor(True, test=True)
+    encryptor.gen_ecc_private_key(VaultType("private"))
+    en = encryptor.encrypt_file(data, VaultType("private"), aad_opt=aad_opt, encryption_header=encryption_header)
+    _, de, de_enc, de_aad = encryptor.decrypt_file(en, VaultType("private"))
+    assert data == de
+    if encryption_header is not None:
+        assert encryption_header == de_enc
+    if aad_opt is not None:
+        assert aad_opt == de_aad
 
 # ------------------- Converter ----------------------------------------------------------------------------------------
 # UTF <-> B64

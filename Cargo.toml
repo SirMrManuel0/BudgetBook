@@ -1,6 +1,6 @@
 [package]
 name = "mfence"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [lib]
@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 pyo3 = {version = "0.25.1", features = ["extension-module"]}
 zeroize = "1.8.1"
 argon2 = "0.5.3"
-chacha20poly1305 = { version = "0.10", features = ["rand_core"] }
+chacha20poly1305 = { version = "0.10.1", features = ["rand_core"] }
 p256 = "0.13.2"
 rand = "0.9.2"
 rand_core = "0.9.3"
@@ -18,6 +18,15 @@ sha2 = "0.10"
 base64 = "0.22.1"
 hex = "0.4"
 argon2-kdf = "1.6.2"
+memsec = "0.7.0"
+hkdf = "0.12"
+x25519-dalek = {version = "2", features = ["static_secrets", "serde"]}
+bincode = "1"
+
+[dependencies.oqs]
+version = "0.11.0"
+default-features = false
+features = ["sigs", "kems", "serde"]
 
 [package.metadata.maturin]
 name = "mfence"

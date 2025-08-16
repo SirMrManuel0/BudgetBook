@@ -31,6 +31,5 @@ def test_read():
     hashed = hashed.digest()
     manager.write(to_write + hashed)
 
-    content, hash_ = manager.read()
-    assert content == Converter.byte_to_b64(to_write)
-    assert hash_ == Converter.byte_to_b64(hashed)
+    content = manager.read()
+    assert content == Converter.byte_to_b64(to_write + hashed)

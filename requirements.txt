@@ -3,3 +3,4 @@ pylix
 keyring
 argon2-cffi
 cryptography
+flask

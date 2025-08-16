@@ -1,5 +1,6 @@
-from budget_book.logic.database.encryptor import Encryptor
+from budget_book.logic.database.encryptor import Encryptor, Converter
 
 __all__ = [
-    "Encryptor"
+    "Encryptor",
+    "Converter"
 ]

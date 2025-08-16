@@ -1,5 +1,6 @@
 import secrets
 import base64
+
 import keyring
 import hashlib
 
@@ -13,7 +14,9 @@ from argon2 import PasswordHasher, exceptions
 from argon2.low_level import hash_secret, Type
 from typing import Iterable, Optional, Union, Literal
 
-from pylix.errors import to_test
+from pylix.errors import to_test, StateError
+
+from budget_book import RustEncryptor, VaultType
 
 
 class Converter:
@@ -132,176 +135,137 @@ class HashingAlgorithm:
             return False
 
 class Encryptor:
-    def __init__(self, test=False):
+    def __init__(self, is_system: bool, test=False):
         """
         The encryptor of the database.
 
         :param test: If tests are programmed, the parameter test must be True.
         """
+        self._is_system = is_system
         self._test = test
+        self._encryptor = RustEncryptor(test)
+        if is_system:
+            self._set_system_key()
 
-    def _get_system_key(self) -> bytes:
+    def _access_encryptor(self) -> Optional[RustEncryptor]:
+        if self._test:
+            return self._encryptor
+        return None
+
+    def _set_system_key(self) -> None:
+        key = None
         if not self._test:
-            return Converter.b64_to_byte(keyring.get_password("BudgetBook", "system_key"))
+            key = Converter.b64_to_byte(keyring.get_password("BudgetBook", "system_key"))
         else:
             # test key
-            return Converter.hex_to_byte("f291edbb67f5bdb73814452098436b30f8615ee01b1e086d4f747748b672355ef33481c6b4a"
-                                         "c812f837128085ef667f00bae190c1be2b8506a2a5590a743d0ff4760d8216b4b8c0f1252fd"
-                                         "8ad1e1332f6557874c36872b410e29a764458c12b8bd0cfe10ddc99db05b539eb4fd31880cd"
-                                         "9704899d6a5bd69a6a3413f188f43c4d374c8c042c163074a45f987acdd69bea59beabe9424"
-                                         "68f5a5d0fcdfbbff9d4fef1a60f51247e9212da9c9b5232caa38f06e386f318e10d4b94016a"
-                                         "a3270ad18dd68540100819bd8a0ba8e176aa601109678a4969159f767ae04d24cbd404e7b1b8"
-                                         "7721831a5af291ae257e7419200b602d9348399623e0c5380590739f83c28")
+            key = Converter.b64_to_byte("yz0Hw1TSUbMYwCohnSwken5AlXFKExjtqK117IjsOI8=")
+        self._encryptor.add_secret(VaultType.system_key(), key)
 
-    @classmethod
-    def _ascii_addition_bytes(cls, *args: bytes) -> bytes:
-        # Convert all to bytearrays for mutability
-        byte_args = [bytearray(arg) for arg in args]
+    def add_secret(self, vt: VaultType, secret: bytes) -> None:
+        self._encryptor.add_secret(vt, secret)
 
-        # Find the longest one
-        longest = max(byte_args, key=len)
-        result = bytearray(longest)  # make a copy to modify
+    def compare_with_secret(self, a: VaultType, b: bytes):
+        self._encryptor.add_secret(VaultType("temp_comparer"), b, True)
+        compared = self.compare_secret(a, VaultType("temp_comparer"))
+        self._encryptor.remove_secret(VaultType("temp_comparer"))
+        return compared
 
-        for arg in byte_args:
-            if arg is longest:
-                continue  # skip the base
+    def compare_secret(self, a: VaultType, b: VaultType):
+        return self._encryptor.compare_secrets(a, b)
 
-            arg_len = len(arg)
-            if arg_len == 0:
-                continue
-
-            n = 0
-            while True:
-                # Calculate start index according to your rule:
-                # offset = (len(arg) - 1) + (n-1)*len(arg) + (n-2)*len(arg)
-                offset = (arg_len - 1) + n * arg_len + (n - 1) * arg_len if n > 0 else 0
-                if offset >= len(result):
-                    break
-
-                for i, b in enumerate(arg):
-                    idx = offset + i
-                    if idx >= len(result):
-                        break
-                    result[idx] = (result[idx] + b) % 256
-
-                n += 1
-
-        return bytes(result)
-
-    def generate_username_key(self, username: bytes, salt: Optional[bytes] = None) -> tuple[bytes, bytes]:
+    def generate_username_key(self, secret_name: str, salt: Optional[bytes] = None) -> bytes:
         """
         This method is used to generate the key for the username (usernames are encrypted with themselves)
 
-        :param username: The username must be given as bytes
-        :param salt: If this is not the first time, the salt of the first salt generation must be given as bytes
-        :return: It returns in the same order the username key and the salt. both as bytes
+        :param secret_name: The secret_name must be known in order to access the username key.
+        :param salt: If this is not the first time, the salt of the first salt generation must be given as bytes.
+        Default length: 32 bytes
+        :return: It returns the salt, with which the username key was derived
         """
-        system_key = self._get_system_key()
-        salt_ = ""
-        time_cost = 3
-        memory_cost = 65536
-        parallelism = 3
-        hash_len = 32
-        user_key = ""
-        hashed = list()
-        if salt is not None:
-            salt_ = salt
-            hashed = hash_secret(
-                secret=self._ascii_addition_bytes(username, system_key),
-                salt=salt_,
-                time_cost=time_cost,
-                memory_cost=memory_cost,
-                parallelism=parallelism,
-                hash_len=hash_len,
-                type=Type.ID,
-            ).decode().split("$")
-        else:
-            ph = PasswordHasher(time_cost=time_cost, memory_cost=memory_cost, parallelism=parallelism, hash_len=hash_len)
-            hashed = ph.hash(self._ascii_addition_bytes(username, system_key)).split("$")
+        if not self._is_system:
+            raise StateError("Only the system can call this method.")
+        salt_ = secrets.token_bytes(32) if salt is None else salt
+        self._encryptor.derive_key(VaultType(secret_name), VaultType.system_key(), salt_)
+        return salt_
 
-        salt_ = hashed[4]
-        user_key = hashed[5]
-        return Converter.b64_to_byte(user_key), Converter.b64_to_byte(salt_)
-
-    def encrypt_username(self, de_username: bytes, salt: Optional[bytes] = None, nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes, bytes]:
+    def encrypt_username(self, de_username: bytes, salt: Optional[bytes] = None, nonce: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
         """
         In order to encrypt the username it needs to be given together with the salt and nonce, if it is not the first time.
 
         :param salt: The salt must be given, if it is not the first time, as bytes
         :param de_username: The username must be given as bytes
         :param nonce: The nonce must be given, if it is not the first time, as bytes
-        :return: It returns in the same order as bytes: the encrypted username, the nonce, the tag (used by AES-GCM), the salt
+        :return: It returns in the same order as bytes: the ciphertext, the nonce, the salt
         """
-        key_, salt_ = self.generate_username_key(username=de_username, salt=salt)
-        en_username = ""
-        nonce_ = nonce
-        tag = None
-        if nonce_ is not None:
-            cipher = Cipher(algorithms.AES(key_), modes.GCM(nonce_))
-            encryptor = cipher.encryptor()
-            en_username = encryptor.update(de_username) + encryptor.finalize()
-            tag = encryptor.tag
-        else:
-            nonce_ = secrets.token_bytes(32)
-            cipher = Cipher(algorithms.AES(key_), modes.GCM(nonce_))
-            encryptor = cipher.encryptor()
-            en_username = encryptor.update(de_username) + encryptor.finalize()
-            tag = encryptor.tag
-        return en_username, nonce_, tag, salt_
+        if not self._is_system:
+            raise StateError("Only the system can call this method.")
+        self._encryptor.remove_secret(VaultType("temp_user_key"))
+        salt_ = self.generate_username_key(secret_name="temp_user_key", salt=salt)
+        nonce_ = nonce if nonce is not None else secrets.token_bytes(24)
+        _, ciphertext = self._encryptor.encrypt_chacha(de_username, nonce_, key=VaultType("temp_user_key"))
+        self._encryptor.remove_secret(VaultType("temp_user_key"))
+        return ciphertext, nonce_, salt_
 
-    @classmethod
-    def decrypt_username(cls, en_username: bytes, nonce: bytes, tag: bytes, user_key: bytes) -> bytes:
+    def decrypt_username(self, en_username: bytes, salt_: bytes, nonce: bytes) -> bytes:
         """
         This method is used to decrypt the username.
 
 
         :param en_username: The encrypted username must be given as bytes
         :param nonce: The nonce must be given as bytes
-        :param tag: The tag must be given as bytes
-        :param user_key: The key must be given as bytes (and should be generated with Encryptor.generate_username_key(username, salt))
+        :param salt_: The salt for the username key generation.
         :return: This function returns the username as bytes
         """
-        aes_gcm = AESGCM(user_key)
-        plaintext = aes_gcm.decrypt(nonce, en_username + tag, associated_data=None)
+        if not self._is_system:
+            raise StateError("Only the system can call this method.")
+        self._encryptor.remove_secret(VaultType("temp_user_key"))
+        salt_ = self.generate_username_key(secret_name="temp_user_key", salt=salt_)
+        plaintext = self._encryptor.decrypt_chacha(en_username, nonce, VaultType("temp_user_key"))
+        self._encryptor.remove_secret(VaultType("temp_user_key"))
         return plaintext
 
-    def encrypt_system_data(self, data: bytes, nonce_len: int = 32, nonce: Optional[bytes] = None) -> bytes:
+    def encrypt_system_data(self, data: bytes, nonce: Optional[bytes] = None,
+                            aad_opt: Optional[bytes] = None, version: int = 1, encryption_header: Optional[bytes] = None) -> bytes:
         """
         All system datas are encrypted with this function.
 
+        Format:
+
+        Version 1:
+
+        version length (3 bytes) + version (any bytes) + encryption_header length (3 bytes)
+        + encrytion_header (any bytes) + aad_opt length (3 bytes) + aad_opt (any bytes)
+        + public key (32 bytes) + salt (32 bytes) + nonce for the key (24 bytes)
+        + key and nonce for the data (32 bytes + 24 bytes + 16 bytes) + data (any bytes)
+
+        Important: version, encryption_header and aad_opt can each be at max 2^(8 x 3) - 1 in length. (ca. 16,777,000)
+
+        :param encryption_header: An encryption header where useful things might be stored.
+        If it is given during encryption, it MUST be given during decryption.
+        :param version: The version of the encryption protocol.
+        What happens with different versions? Don't ask me.
         :param data: The data must be given as bytes
-        :param nonce_len: The nonce_len is standard by 32, but could be increased (should only be done, if it is noted for this particular data)
         :param nonce: The nonce must be given if it is not the first time. It must be given as bytes
-        :return: It returns the encrypted data as bytes.
+        :param aad_opt: The aad is optional and can be given as bytes.
+        If it is given during encryption, it MUST be given during decryption.
+        :return: It returns the encrypted data as a bytes in a certain format as seen above.
         """
-        key_ = self._get_system_key()
-        hashed_key = hashlib.sha256()
-        hashed_key.update(key_)
-        hashed_key = hashed_key.digest()
-        nonce_ = secrets.token_bytes(nonce_len) if nonce is None else nonce
-        cipher = Cipher(algorithms.AES(hashed_key), modes.GCM(nonce_))
-        encryptor = cipher.encryptor()
-        en_data = encryptor.update(data) + encryptor.finalize()
-        tag = encryptor.tag
-        return nonce_ + en_data + tag
+        if not self._is_system:
+            raise StateError("Only the system can call this method.")
+        return self.encrypt_file(data, VaultType.system_key(), nonce, aad_opt, version, encryption_header)
 
-    def decrypt_system_data(self, en_data: bytes, nonce_len: int = 32) -> bytes:
+    def decrypt_system_data(self, en_data: bytes) -> tuple[int, bytes, bytes, bytes]:
         """
-        This function decrypts system data which was encrypted with Encryptor.encrypt_system_data(data, nonce_len=32, nonce=None).
+        This function decrypts system data which was encrypted with Encryptor.encrypt_system_data.
 
-        :param en_data: The data needs to be given as bytes.
-        :param nonce_len: The nonce_len is standardised at 32, but can be increased.
-        :return: It returns the decrypted data as bytes
+        Important: Directly pass it. This function assume that it can simply use the format from Encryptor.encrypt_system_data.
+
+        :param en_data: The data should be passed as string.
+        :return: It returns in the same order: Version (int), decrypted (bytes), encryption_header (bytes), aad_opt (bytes)
         """
-        nonce_ = en_data[:nonce_len]
-        data_and_tag = en_data[nonce_len:]
-        key_ = self._get_system_key()
-        hashed_key = hashlib.sha256()
-        hashed_key.update(key_)
-        hashed_key = hashed_key.digest()
-        aes_gcm = AESGCM(hashed_key)
-        plaintext = aes_gcm.decrypt(nonce_, data_and_tag, associated_data=None)
-        return plaintext
+        if not self._is_system:
+            raise StateError("Only the system can call this method.")
+        return self.decrypt_file(en_data, VaultType.system_key())
 
     @classmethod
     def validate_hash(cls, data: bytes, hash_: Union[bytes, str], hashing_algo) -> bool:
@@ -320,223 +284,152 @@ class Encryptor:
         else:
             return ret
 
-    @classmethod
-    def hash_pw(cls, pw: bytes, hash_len=64) -> str:
+    def hash_pw(self, secret_name, hash_len: Optional[int] = None, salt_len: Optional[int] = None) -> str:
         """
         Passwords given into this function are hashed with argon2id.
 
         :param pw: The password needs to given as bytes
         :param hash_len: The length of the hash is standardised at 64 bytes, but can vary.
+        :param salt_len: The length of the salt. default is: 16
         :return: The function returns the hash as utf-8 string.
         """
-        ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=3, hash_len=hash_len)
-        return ph.hash(pw)
+        return self._encryptor.hash_pw(VaultType(secret_name), hash_len, salt_len)
 
-    @classmethod
-    def recreate_hash(cls, pw: bytes, salt: bytes,
-                      time_cost: int = 3, memory_cost: int = 65536, parallelism: int = 3, hash_len: int = 64) -> str:
+    def recreate_hash(self, secret_name: str, salt: bytes, salt_len: Optional[int] = None, hash_len: Optional[int] = None) -> str:
         """
         In order to recreate an argon2id hash you need to pass the password and salt as bytes. The hash_len needs to be correct. The rest can be changed, but should not.
 
+        :param salt_len: The length of the salt should be passed as int.
         :param pw: The password needs to be passed as bytes.
         :param salt: The salt needs to be passed as bytes.
-        :param time_cost: default 3, can vary
-        :param memory_cost: default 65536, can vary
-        :param parallelism: default 3, can vary
         :param hash_len: default 64 bytes, can vary
         :return: It returns the hash as string.
         """
-        return hash_secret(
-            secret=pw,
-            salt=salt,
-            time_cost=time_cost,
-            memory_cost=memory_cost,
-            parallelism=parallelism,
-            hash_len=hash_len,
-            type=Type.ID,
-        ).decode()
+        return self._encryptor.hash_pw(VaultType(secret_name), hash_len, salt_len, salt)
 
-    @classmethod
-    def create_private_key(cls) -> RSAPrivateKey:
+    def gen_ecc_private_key(self, store_in: VaultType):
         """
-        This function creates the private key.
+        This method generates an ECC private key with the Rust x25516_dalek Crate.
 
-        :return: It is returned as RSAPrivateKey
+        :param store_in: This is the VaultType reference where the private key will be stored in.
+        :return:
         """
-        return rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
+        self._encryptor.gen_static_private_key(store_in)
+
+    def encrypt_file(self, data: bytes, private_key: Union[str, VaultType], nonce: Optional[bytes] = None,
+                     aad_opt: Optional[bytes] = None, version: int = 1, encryption_header: Optional[bytes] = None) -> bytes:
+        """
+        This method encrypts a file with an ECC private key. You can either pass the name of the secret as a string
+        or pass the corresponding VaultType.
+
+        Version 1:
+
+        version length (3 bytes) + version (any bytes) + encryption_header length (3 bytes)
+        + encrytion_header (any bytes) + aad_opt length (3 bytes) + aad_opt (any bytes)
+        + public key (32 bytes) + salt (32 bytes) + nonce for the key (24 bytes)
+        + key and nonce for the data (32 bytes + 24 bytes + 16 bytes) + data (any bytes)
+
+        Important: version, encryption_header and aad_opt can each be at max 2^(8 x 3) - 1 bytes in length. (ca. 16,777,000)
+
+        :param data: This is the data ypu want to encrypt. Passit as bytes.
+        :param private_key: This is either the name of the secret as string or the corresponding VaultType.
+        :param nonce: This is the npnce with which the data will be encrypted. It should be passed as bytes, but is optional.
+        :param aad_opt: The aad_opt is a piece of validated but not encrypted data. It should be passed as bytes, but is optional.
+        :param version: The version ... should currently nit be changed, but in theory it should be any uint in the range 0 < n <= ca. 16,777,000.
+        :param encryption_header: The encryption_header is another piece of validated, but not encrypted data.
+        :return: It returns the encrypted content as seen above in bytes.
+        """
+        encryption_header = encryption_header if encryption_header is not None else b""
+        aad_opt = aad_opt if aad_opt is not None else b""
+
+        version: bytes = Converter.int_to_bytes(version, False)
+        version_and_len: bytes = Converter.int_to_bytes(len(version), False, 3)
+        encryption_header_len: bytes = Converter.int_to_bytes(len(encryption_header), False, 3)
+        aad_opt_len: bytes = Converter.int_to_bytes(len(aad_opt), False, 3)
+
+        self._encryptor.remove_secret(VaultType("temp_chacha_ig"))
+
+        nonce_ = secrets.token_bytes(24) if nonce is None else nonce
+        _, ciphertext = self._encryptor.encrypt_chacha(data, nonce_, aad_opt, VaultType("temp_chacha_ig"))
+        new_nonce = secrets.token_bytes(24)
+        salt = secrets.token_bytes(32)
+        self._encryptor.remove_secret(VaultType("temp_eph_key"))
+        self._encryptor.gen_eph_private_key(VaultType("temp_eph_key"))
+        self._encryptor.remove_secret(VaultType("temp_shared_secret"))
+        self._encryptor.find_shared_secret(
+            VaultType("temp_shared_secret"),
+            VaultType(private_key) if isinstance(private_key, str) else private_key,
+            VaultType("temp_eph_key"),
+            False
+        )
+        self._encryptor.remove_secret(VaultType("temp_derived_key"))
+        self._encryptor.derive_key(VaultType("temp_derived_key"), VaultType("temp_shared_secret"), salt)
+        _, cipher = self._encryptor.encrypt_key_and_more(nonce_, VaultType("temp_chacha_ig"), new_nonce,
+                                                         encryption_header, VaultType("temp_derived_key"))
+        pub_key = self._encryptor.get_public_key(VaultType("temp_eph_key"))
+        self._encryptor.remove_secret(VaultType("temp_chacha_ig"))
+        self._encryptor.remove_secret(VaultType("temp_eph_key"))
+        self._encryptor.remove_secret(VaultType("temp_shared_secret"))
+        self._encryptor.remove_secret(VaultType("temp_derived_key"))
+        return (
+                version_and_len + version
+                + encryption_header_len + encryption_header
+                + aad_opt_len + aad_opt
+                + pub_key
+                + salt + new_nonce
+                + cipher
+                + ciphertext
         )
 
-    @classmethod
-    def serialize_private_key(cls, private_key: RSAPrivateKey) -> bytes:
+    def decrypt_file(self, en_data: bytes, private_key: Union[str, VaultType]) -> tuple[int, bytes, bytes, bytes]:
         """
-        The private key needs to be serialized in order for it to be converted to bytes.
+        This function decrypts a file which was encrypted with Encryptor.encrypt_file.
 
-        :param private_key: The private key as RSAPrivateKey
-        :return: The private key as bytes
+        Important: Directly pass it. This function assume that it can simply use the format from Encryptor.encrypt_file.
+
+        :param en_data: The data should be passed as string.
+        :param private_key: This is either the name of the ECC private key as string or the corresponding VaultType.
+        :return: It returns in the same order: Version (int), decrypted (bytes), encryption_header (bytes), aad_opt (bytes)
         """
-        return private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
+        version_len: int = Converter.bytes_to_int(en_data[:3], False)
+        version: int = Converter.bytes_to_int(en_data[3: 3 + version_len], False)
+        current: int = 3 + version_len
+        enc_head_len: int = Converter.bytes_to_int(en_data[current: current + 3], False)
+        current += 3
+        encryption_header: bytes = en_data[current: current + enc_head_len]
+        current += enc_head_len
+        aad_opt_len: int = Converter.bytes_to_int(en_data[current: current + 3], False)
+        current += 3
+        aad_opt: bytes = en_data[current: current + aad_opt_len]
+        current += aad_opt_len
+        pub_key: bytes = en_data[current: current + 32]
+        current += 32
+        salt: bytes = en_data[current: current + 32]
+        current += 32
+        key_nonce: bytes = en_data[current: current + 24]
+        current += 24
+        key_and_nonce: bytes = en_data[current: current + 32 + 24 + 16]
+        current += 32 + 24 + 16
+        ciphertext: bytes = en_data[current:]
+
+        self._encryptor.add_secret(VaultType("temp_pub_key"), pub_key, True)
+        self._encryptor.remove_secret(VaultType("temp_shared_secret"))
+        self._encryptor.remove_secret(VaultType("temp_derived_key"))
+        self._encryptor.remove_secret(VaultType("temp_main_key"))
+        self._encryptor.find_shared_secret(
+            VaultType("temp_shared_secret"),
+            private_key if isinstance(private_key, VaultType) else VaultType(private_key),
+            VaultType("temp_pub_key"),
+            True
         )
+        self._encryptor.derive_key(VaultType("temp_derived_key"), VaultType("temp_shared_secret"), salt)
+        nonce = self._encryptor.decrypt_into_key(key_and_nonce, key_nonce, VaultType("temp_main_key"),
+                                                 VaultType("temp_derived_key"), encryption_header)
+        plain = self._encryptor.decrypt_chacha(ciphertext, nonce, VaultType("temp_main_key"), aad_opt)
 
-    @classmethod
-    def deserialize_private_key(cls, pem_data: bytes) -> RSAPrivateKey:
-        """
-        This function deserializes the private key; it turns it from bytes to a RSAPrivateKey object.
+        self._encryptor.remove_secret(VaultType("temp_pub_key"))
+        self._encryptor.remove_secret(VaultType("temp_shared_secret"))
+        self._encryptor.remove_secret(VaultType("temp_derived_key"))
+        self._encryptor.remove_secret(VaultType("temp_main_key"))
 
-        :param pem_data: The private key as bytes
-        :return: It returns the private key as RSAPrivateKey object.
-        """
-        return serialization.load_pem_private_key(
-            pem_data,
-            password=None
-        )
-
-    @classmethod
-    def serialize_public_key(cls, public_key: RSAPublicKey) -> bytes:
-        """
-        The public key needs to be serialized in order for it to be converted to bytes.
-
-        :param public_key: The public key as RSAPrivateKey
-        :return: The public key as bytes
-        """
-        return public_key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.PKCS1
-        )
-
-    @classmethod
-    def deserialize_public_key(cls, pem_data: bytes) -> RSAPublicKey:
-        """
-        This function deserializes the public key; it turns it from bytes to a RSAPublicKey object.
-
-        :param pem_data: The public key as bytes
-        :return: It returns the public key as RSAPublicKey object.
-        """
-        return serialization.load_pem_public_key(pem_data)
-
-    def encrypt_private_key(self, password: bytearray,
-                            private_key: Optional[RSAPrivateKey] = None,
-                            user_id: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
-        """
-        This function encrypts the private key with Chacha20-Poly1305.
-
-        :param password: The password needs to be passed as bytearray. (bytearray(b"example"))
-        :param private_key: The private key can be passed. If not a new one will be generated. It needs to be passed as RSAPrivateKey object.
-        :param user_id: The user_id ... can be passed, but i dont think it should be. as bytes
-        :return: The funtion returns in the same order: The encrypted private key as bytes, the salt as bytes, the nonce as bytes.
-        """
-        if private_key is not None:
-            private_key: bytes = self.serialize_private_key(private_key)
-        else:
-            private_key: bytes = self.serialize_private_key(self.create_private_key())
-        hash_pw = self.hash_pw(bytes(password), hash_len=32)
-
-        hash_pw = hash_pw.split("$")
-        salt = Converter.b64_to_byte(hash_pw[-2])
-        key = Converter.b64_to_byte(hash_pw[-1])
-
-        chacha = ChaCha20Poly1305(key)
-        nonce = secrets.token_bytes(12)
-        aad = user_id
-
-        return chacha.encrypt(nonce, private_key, aad), salt, nonce
-
-    def decrypt_private_key(self, password: bytearray,
-                            private_key: bytes,
-                            nonce: bytes, salt: bytes,
-                            user_id: Optional[bytes] = None) -> bytes:
-        """
-        This function decrypts the private key.
-
-
-        :param password: The password needs to be passed as bytearray. (bytearray(b"example"))
-        :param private_key: The private key as bytes
-        :param nonce: The nonce as bytes
-        :param salt: The salt as bytes
-        :param user_id: The user_id ... can be passed, but i dont think it should be. as bytes
-        :return: The private key as bytes. (it still needs to be deserialised)
-        """
-        hash_pw = self.recreate_hash(bytes(password), salt, hash_len=32)
-        hash_pw = hash_pw.split("$")
-        key = Converter.b64_to_byte(hash_pw[-1])
-        chacha = ChaCha20Poly1305(key)
-        return chacha.decrypt(nonce, private_key, user_id)
-
-    @classmethod
-    @to_test
-    def decrypt_rsa(cls, private_key: RSAPrivateKey, ciphertext: bytes, label: Optional[bytes] = None) -> bytes:
-        """
-        This function decrypts with the private key. Used for user data.
-
-        :param private_key: The private key as RSAPrivateKey
-        :param ciphertext: The text which needs to be decrypted as bytes
-        :param label: An optional label as bytes
-        :return: The decrypted text as bytes
-        """
-        return private_key.decrypt(
-            ciphertext,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=label
-            )
-        )
-
-    @classmethod
-    @to_test
-    def encrypt_rsa(cls, public_key: RSAPublicKey, plaintext: bytes, label: Optional[bytes] = None) -> bytes:
-        """
-        This function encrypts with the private key. Used for user data.
-
-        :param public_key: The private key as RSAPublicKey
-        :param plaintext: The text which needs to be encrypted as bytes
-        :param label: An optional label as bytes
-        :return: The encrypted text as bytes
-        """
-        return public_key.encrypt(
-            plaintext,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=label
-            )
-        )
-
-    @classmethod
-    @to_test
-    def decrypt_chacha20(cls, key: bytes, nonce: bytes, encrypted_data: bytes,
-                         authenticated: Optional[bytes] = None) -> bytes:
-        """
-        This function decrypts ciphertext, which was encrypted with ChaCha20-Poly1305.
-
-        :param key: The key needs to be given as bytes.
-        :param nonce: The nonce must be given as bytes.
-        :param encrypted_data: the encrypted_data needs to be given as bytes.
-        :param authenticated: An optional piece of data, which is authenticated, but not encrypted, needs to be given as bytes.
-        :return: The decrypted plaintext as bytes.
-        """
-        return ChaCha20Poly1305(key).decrypt(nonce, encrypted_data, authenticated)
-
-    @classmethod
-    @to_test
-    def encrypt_chacha20(cls, clear_text: bytes, authenticated: Optional[bytes] = None,
-                         nonce: Optional[bytes] = None, key: Optional[bytes] = None) -> tuple[bytes, bytes, bytes]:
-        """
-        This function encrypts plaintext with ChaCha20-Poly1305.
-
-        :param clear_text: The clear_text needs to be given as bytes.
-        :param authenticated: The optional authenticated data needs to be given as bytes.
-        :param nonce: The optional nonce needs to be given as bytes.
-        :param key: The key needs to be given as bytes.
-        :return: This function returns in the same order as bytes: the key, the nonce, the encrypted data.
-        """
-        if nonce is None:
-            nonce = secrets.token_bytes(24)
-        if key is None:
-            key = ChaCha20Poly1305.generate_key()
-        chacha = ChaCha20Poly1305(key)
-        return key, nonce, chacha.encrypt(nonce, clear_text, authenticated)
+        return version, plain, encryption_header, aad_opt
