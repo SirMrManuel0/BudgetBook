@@ -4,3 +4,4 @@ keyring
 argon2-cffi
 cryptography
 flask
+maturin
