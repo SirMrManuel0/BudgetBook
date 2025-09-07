@@ -1,6 +1,16 @@
 
 # NOT UPTODATE (will be change .... sometime)
 
+for devs:
+
+to easier do PyTest use following command (ensure Docker is installed):
+
+```commandline
+docker build -f DockerfilePytest -t budgetbook_pytest . && docker run --rm -it budgetbook_pytest
+```
+
+should work on Windows Powershell, Mac and Linux.... probably.
+
 # BudgetBook
 1. [How to use](#1-how-to-use)
    1. [Server](#i-server)
