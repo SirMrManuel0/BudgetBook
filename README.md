@@ -1,5 +1,5 @@
 
-# NOT UPTODATE (will be change .... sometime)
+# NOT UPTODATE (will be changed .... sometime)
 
 for devs:
 
