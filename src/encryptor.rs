@@ -455,4 +455,26 @@ impl Encryptor {
         };
         Ok(pub_key.to_bytes().to_vec())
     }
+
+    pub fn transfer_secret(&mut self, other: PyRef<Encryptor>, rvt: PyRef<PyVaultType>) -> PyResult<()> {
+        let vt = {
+            let (is_, vt): (bool, VaultType) = has_secret_vk(&other, &rvt.vt);
+            if !is_ {
+                return Err(PyException::new_err("There is no such secret."));
+            }
+            vt
+        };
+        {
+            let (is_, _): (bool, _) = has_secret_vk(&self, &vt);
+            if is_ {
+                return Err(PyException::new_err("There is already such a secret."))
+            }
+        }
+
+        let secret: Vec<u8> = other.vault.get(&vt).expect("WTFF???").expose().to_vec();
+        
+        self.vault.add(vt, secret).map_err(|e| PyException::new_err(format!("There was an error at storage: {:?}", e)))?;
+
+        Ok(())
+    }
 }

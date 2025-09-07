@@ -1,4 +1,5 @@
 import secrets
+from typing import Self
 
 from mfence import Encryptor, PyVaultType
 
@@ -42,6 +43,9 @@ class VaultType:
     @classmethod
     def eph_private_key(cls):
         return cls._from_inner(PyVaultType.eph_private_key)
+
+    def copy(self) -> Self:
+        return VaultType._from_inner(self._inner.clone())
 
     @classmethod
     def _from_inner(cls, inner: PyVaultType):
@@ -310,3 +314,16 @@ class RustEncryptor:
         :return: It returns the public key as bytes.
         """
         return self._encryptor.get_public_key(private_key.inner)
+
+    def transfer_secret(self, encryptor: Self, vt: VaultType) -> None:
+        """
+        This function transfers a secret from one RustEncryptor to another.
+        It transfers it from the param to self.
+
+
+        :param encryptor: The encryptor in which the secret was originally stored.
+        :param vt: This is the VaultType reference under which the secret is stored.
+        :return:
+        """
+        self._encryptor.transfer_secret(encryptor._encryptor, vt.inner)
+        encryptor.remove_secret(vt)

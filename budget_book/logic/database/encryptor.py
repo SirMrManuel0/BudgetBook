@@ -161,8 +161,15 @@ class Encryptor:
             key = Converter.b64_to_byte("yz0Hw1TSUbMYwCohnSwken5AlXFKExjtqK117IjsOI8=")
         self._encryptor.add_secret(VaultType.system_key(), key)
 
+    def is_no_longer_system(self):
+        self._is_system = False
+        self._encryptor.remove_secret(VaultType.system_key())
+
     def add_secret(self, vt: VaultType, secret: bytes) -> None:
         self._encryptor.add_secret(vt, secret)
+
+    def remove_secret(self, vt: VaultType) -> None:
+        self._encryptor.remove_secret(vt)
 
     def compare_with_secret(self, a: VaultType, b: bytes):
         self._encryptor.add_secret(VaultType("temp_comparer"), b, True)
@@ -433,3 +440,15 @@ class Encryptor:
         self._encryptor.remove_secret(VaultType("temp_main_key"))
 
         return version, plain, encryption_header, aad_opt
+
+    def transfer_secret(self, encryptor: RustEncryptor, vt: VaultType):
+        """
+        This function transfers a secret from one RustEncryptor to another.
+        It transfers it from the param to self.
+
+
+        :param encryptor: The encryptor in which the secret was originally stored.
+        :param vt: This is the VaultType reference under which the secret is stored.
+        :return:
+        """
+        self._encryptor.transfer_secret(encryptor, vt)
