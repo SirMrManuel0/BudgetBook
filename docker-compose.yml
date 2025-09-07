@@ -1,14 +1,11 @@
 services:
   budgetbook-server:
-    image: a# ----------------------------------------------------------------------
+    image: ghcr.io/sirmrmanuel0/budgetbook:latest
     container_name: budgetbook-server
     working_dir: /app
     ports:
-      - localhost:443:443
+      - localhost:443:443 # Change ip and port here e.g. 192.168.178.100:80:443 the last :443 must ALWAYS exist
     volumes:
-      - ./src:/app
-      - ./permanent_storage:/permanent_storage
-    command: python main.py
-
-volumes:
-  app_data:
+      - ./data:/permanent_storage
+      - ./cert:/cert_pub
+    command: python main.py --mode server --ip 0.0.0.0 --port 443

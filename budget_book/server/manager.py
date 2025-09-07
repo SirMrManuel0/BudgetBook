@@ -1,13 +1,19 @@
-from flask import Flask
 import ssl
+import os
+
+from flask import Flask
+
+from budget_book.server import server_env
 
 app = Flask(__name__)
+
 
 @app.route("/")
 def index():
     return "Secure ECDHE + ChaCha20-Poly1305 only!"
 
 def start_server(ip: str, port: int = 443):
+    server_env.init()
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 
     # Only allow TLS 1.2 and 1.3
@@ -24,6 +30,9 @@ def start_server(ip: str, port: int = 443):
         print("Warning: TLS 1.3 cipher restriction not supported on this Python/OpenSSL version")
 
     # Load your certificate
-    context.load_cert_chain(certfile="cert.pem", keyfile="key.pem")
+    context.load_cert_chain(
+        certfile=os.path.join(server_env.CERT_PRIV_DIR, f"{server_env.CERT_NAME}.crt"),
+        keyfile=os.path.join(server_env.CERT_PRIV_DIR, f"{server_env.KEY_NAME}.key")
+    )
 
     app.run(host=ip, port=port, ssl_context=context)
