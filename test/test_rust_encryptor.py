@@ -224,3 +224,43 @@ def test_encrypt_key_and_more(key_to_enc: bytes, key: bytes, nonce: bytes, extra
     assert key_to_enc + extra == dec
     if expected is not None:
         assert ciph == expected
+@pytest.mark.parametrize(
+    "others1,others2",
+    [
+        ("", "abcdefghijklmnopqrstuvwxyz"),
+        ("abcdef", "ghijklmnopqrstuvwxyz"),
+        ("abcdefghijklmno", "pqrstuvwxyz"),
+        ("abcdefghijklmnopqrstuv", "wxyz"),
+        ("abcdefghijklmnopqrstuvwxyz", ""),
+    ]
+)
+def test_transfer_secret(others1: str, others2: str):
+    encryptor1: RustEncryptor = RustEncryptor(test=True)
+    encryptor2: RustEncryptor = RustEncryptor(test=True)
+    saved_ones1: dict = dict()
+    for c in others1:
+        t = secrets.token_bytes(32)
+        encryptor1.add_secret(VaultType(c), t)
+        saved_ones1[c] = t
+
+    saved_ones2: dict = dict()
+    for c in others2:
+        t = secrets.token_bytes(32)
+        encryptor2.add_secret(VaultType(c), t)
+        saved_ones2[c] = t
+
+    e1 = encryptor1 if len(others1) > len(others2) else encryptor2
+    e2 = encryptor2 if len(others1) > len(others2) else encryptor1
+    o1 = others1 if len(others1) > len(others2) else others2
+    o2 = others2 if len(others1) > len(others2) else others1
+    s1 = saved_ones1 if len(others1) > len(others2) else saved_ones2
+    s2 = saved_ones2 if len(others1) > len(others2) else saved_ones1
+
+    for c in o1:
+        e2.transfer_secret(e1, VaultType(c))
+        s2[c] = s1[c]
+        del s1[c]
+        assert e2.get_secret(VaultType(c), True) == s2[c]
+
+        with pytest.raises(Exception):
+            _ = e1.get_secret(VaultType(c), True)
