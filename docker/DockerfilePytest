@@ -1,0 +1,35 @@
+# Stage 1: Build
+FROM python:3.13-slim AS builder
+
+RUN apt-get update && apt-get install -y \
+    build-essential cmake clang libclang-dev llvm-dev pkg-config libssl-dev curl cargo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Rust + maturin
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:$PATH"
+
+WORKDIR /app
+COPY .. .
+
+RUN pip install --upgrade pip maturin
+RUN maturin build --release
+
+# Stage 2: Final
+FROM python:3.13-slim AS final
+
+WORKDIR /app
+
+COPY --from=builder /app/target/wheels/*.whl .
+RUN pip install *.whl
+
+# Copy other project files if needed
+COPY .. .
+
+RUN pip install -r requirements.txt
+
+#CMD ["python", "main.py"]
+
+RUN pip install pytest
+
+CMD ["pytest"]

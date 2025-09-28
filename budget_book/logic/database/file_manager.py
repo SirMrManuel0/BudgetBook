@@ -58,6 +58,12 @@ class FileManager:
             bin_ = f.read()
         if path.endswith(".ej"):
             return Converter.byte_to_b64(bin_)
+        elif path.endswith(".et"):
+            b64 = Converter.byte_to_b64(bin_)
+            version: str = b64[: b64.find(";")]
+            file_id: str = b64[b64.find(";") + 1 : b64.find("|")]
+            file: str = b64[b64.find("|") + 1 :]
+            return version, file_id, file
         elif path.endswith(".k_hb"):
             salt = bin_[:salt_len]
             nonce = bin_[salt_len:salt_len+nonce_len]

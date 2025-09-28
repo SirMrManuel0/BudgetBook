@@ -43,7 +43,7 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:$PATH"
 
 WORKDIR /app
-COPY . .
+COPY .. .
 
 RUN pip install --upgrade pip maturin
 RUN maturin build --release
@@ -57,12 +57,8 @@ COPY --from=builder /app/target/wheels/*.whl .
 RUN pip install *.whl
 
 # Copy other project files if needed
-COPY . .
+COPY .. .
 
 RUN pip install -r requirements.txt
 
-#CMD ["python", "main.py"]
-
-RUN pip install pytest
-
-CMD ["pytest"]
+CMD ["python", "main.py", "--mode", "server", "--ip", "0.0.0.0", "--port", "443"]

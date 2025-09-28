@@ -1,0 +1,10 @@
+services:
+  pre-built:
+    build:
+      context: .
+      dockerfile: docker/DockerfilePrebuiltWheel
+    container_name: pre-built
+    working_dir: /app
+    volumes:
+      - ./prebuilt/wheel/:/ext
+    command:

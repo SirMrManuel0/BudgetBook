@@ -231,6 +231,10 @@ class Encryptor:
         self._encryptor.remove_secret(VaultType("temp_user_key"))
         return plaintext
 
+    def encrypt_et(self, data: bytes,  secret_name: str, nonce: Optional[bytes] = None,
+                   aad_opt: Optional[bytes] = None, version: int = 1, encryption_header: Optional[bytes] = None) -> bytes:
+        self.encrypt_file(data=data, private_key=secret_name, nonce=nonce, aad_opt=aad_opt, version=version, encryption_header=encryption_header)
+
     def encrypt_system_data(self, data: bytes, nonce: Optional[bytes] = None,
                             aad_opt: Optional[bytes] = None, version: int = 1, encryption_header: Optional[bytes] = None) -> bytes:
         """
@@ -291,11 +295,11 @@ class Encryptor:
         else:
             return ret
 
-    def hash_pw(self, secret_name, hash_len: Optional[int] = None, salt_len: Optional[int] = None) -> str:
+    def hash_pw(self, secret_name: str, hash_len: Optional[int] = None, salt_len: Optional[int] = None) -> str:
         """
         Passwords given into this function are hashed with argon2id.
 
-        :param pw: The password needs to given as bytes
+        :param secret_name: The name of the secret to be hashed as string.
         :param hash_len: The length of the hash is standardised at 64 bytes, but can vary.
         :param salt_len: The length of the salt. default is: 16
         :return: The function returns the hash as utf-8 string.
@@ -307,7 +311,7 @@ class Encryptor:
         In order to recreate an argon2id hash you need to pass the password and salt as bytes. The hash_len needs to be correct. The rest can be changed, but should not.
 
         :param salt_len: The length of the salt should be passed as int.
-        :param pw: The password needs to be passed as bytes.
+        :param secret_name: The name of the password as string.
         :param salt: The salt needs to be passed as bytes.
         :param hash_len: default 64 bytes, can vary
         :return: It returns the hash as string.
