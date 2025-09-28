@@ -20,3 +20,9 @@ class DatabaseError(BaseError):
         if msg == "":
             msg = "This was a faulty request."
         super().__init__(msg)
+
+class StateError(BaseError):
+    def __init__(self, msg=""):
+        if msg == "":
+            msg = "An invalid state was reached."
+        super().__init__(msg)

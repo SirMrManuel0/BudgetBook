@@ -1,3 +1,4 @@
+import json
 import secrets
 import base64
 
@@ -14,10 +15,10 @@ from argon2 import PasswordHasher, exceptions
 from argon2.low_level import hash_secret, Type
 from typing import Iterable, Optional, Union, Literal
 
-from pylix.errors import to_test, StateError
+from pylix.errors import to_test
 
 from budget_book import RustEncryptor, VaultType
-
+from budget_book.errors.errors import StateError
 
 class Converter:
     @classmethod
@@ -139,11 +140,13 @@ class Encryptor:
         """
         The encryptor of the database.
 
+        :param is_system: This is a variable set to verify an instance to be the systems instance.
         :param test: If tests are programmed, the parameter test must be True.
         """
-        self._is_system = is_system
-        self._test = test
-        self._encryptor = RustEncryptor(test)
+        self._is_system: bool = is_system
+        self._test: bool = test
+        self._encryptor: RustEncryptor = RustEncryptor(test)
+        self._key_file: Optional[dict] = None
         if is_system:
             self._set_system_key()
 
@@ -160,6 +163,72 @@ class Encryptor:
             # test key
             key = Converter.b64_to_byte("yz0Hw1TSUbMYwCohnSwken5AlXFKExjtqK117IjsOI8=")
         self._encryptor.add_secret(VaultType.system_key(), key)
+
+    @to_test
+    def set_key_file(self, password: Union[str, VaultType], key_file: bytes) -> int:
+        """
+        The key file stores all keys for all files (within the scope).
+
+         Format:
+
+         Version 1:
+        version_len (3 bytes) + version (any bytes >I) + nonce (24 bytes) + cipher (32 bytes + 24 bytes + 16 bytes)
+         + file ({ file id: { key_salt: 25 bytes, key_nonce: 24 bytes, nonce: 24 bytes, key: 32 bytes + 16 bytes } })
+
+
+        :param password:
+        :param key_file:
+        :return:
+        """
+        password: VaultType = password if isinstance(password, VaultType) else VaultType(password)
+        current = 0
+        version_len: bytes = key_file[:3]
+        current += 3
+        limit_: int = Converter.bytes_to_int(version_len, False)
+        version: bytes = key_file[current: limit_ + current]
+        current += limit_
+        version: int = Converter.bytes_to_int(version_len, False)
+        nonce: bytes = key_file[current: 24 + current]
+        current += 24
+        cipher: bytes = key_file[current: 32 + 24 + 16 + current]
+        current += 32 + 24 + 16
+        file: bytes = key_file[current:]
+
+        nonce_file = self._encryptor.decrypt_into_key(cipher, nonce, VaultType("temp_key_file_pw"), password, None)
+        half_decrypted: bytes = self._encryptor.decrypt_chacha(file, nonce_file, VaultType("temp_key_file_pw"))
+        self._encryptor.remove_secret(VaultType("temp_key_file_pw"))
+        half_decrypted: dict = json.loads(half_decrypted)
+        key_file: dict = dict()
+
+        for k, v in half_decrypted.items():
+            self._encryptor.derive_key(VaultType("temp_file_key_key"), password,
+                                       salt=Converter.b64_to_byte(v["key_salt"]))
+            key_file[k] = { "nonce": v["nonce"] }
+            self._encryptor.decrypt_into_key(
+                Converter.b64_to_byte(v["key"]),
+                nonce=Converter.b64_to_byte(v["key_nonce"]),
+                store=VaultType(f"key_file_{k}"),
+                key=VaultType("temp_file_key_key")
+            )
+            key_file[k]["key"] = VaultType(f"key_file_{k}")
+            self._encryptor.remove_secret(VaultType("temp_file_key_key"))
+
+        self._key_file = key_file
+
+        return version
+
+    def add_file(self) -> str:
+        if self._key_file is None:
+            raise StateError("There is no key file.")
+
+        max_ = -1
+        for id_ in self._key_file.keys():
+            id_: int = Converter.b64_to_int(id_, False)
+            max_ = max(id_, max_)
+        new_id = max_ + 1
+        id_b = Converter.int_to_b64(new_id, False)
+        self._key_file[id_b] = { "nonce": secrets.token_bytes(24), "key": VaultType(f"key_file_{id_b}") }
+        ...
 
     def is_no_longer_system(self):
         self._is_system = False
@@ -233,7 +302,14 @@ class Encryptor:
 
     def encrypt_et(self, data: bytes,  secret_name: str, nonce: Optional[bytes] = None,
                    aad_opt: Optional[bytes] = None, version: int = 1, encryption_header: Optional[bytes] = None) -> bytes:
-        self.encrypt_file(data=data, private_key=secret_name, nonce=nonce, aad_opt=aad_opt, version=version, encryption_header=encryption_header)
+        self.encrypt_file(
+            data=data,
+            private_key=secret_name,
+            nonce=nonce,
+            aad_opt=aad_opt,
+            version=version,
+            encryption_header=encryption_header
+        )
 
     def encrypt_system_data(self, data: bytes, nonce: Optional[bytes] = None,
                             aad_opt: Optional[bytes] = None, version: int = 1, encryption_header: Optional[bytes] = None) -> bytes:
@@ -336,7 +412,7 @@ class Encryptor:
         Version 1:
 
         version length (3 bytes) + version (any bytes) + encryption_header length (3 bytes)
-        + encrytion_header (any bytes) + aad_opt length (3 bytes) + aad_opt (any bytes)
+        + encryption_header (any bytes) + aad_opt length (3 bytes) + aad_opt (any bytes)
         + public key (32 bytes) + salt (32 bytes) + nonce for the key (24 bytes)
         + key and nonce for the data (32 bytes + 24 bytes + 16 bytes) + data (any bytes)
 
@@ -346,7 +422,7 @@ class Encryptor:
         :param private_key: This is either the name of the secret as string or the corresponding VaultType.
         :param nonce: This is the npnce with which the data will be encrypted. It should be passed as bytes, but is optional.
         :param aad_opt: The aad_opt is a piece of validated but not encrypted data. It should be passed as bytes, but is optional.
-        :param version: The version ... should currently nit be changed, but in theory it should be any uint in the range 0 < n <= ca. 16,777,000.
+        :param version: The version ... should currently not be changed, but in theory it should be any uint in the range 0 < n <= ca. 16,777,000.
         :param encryption_header: The encryption_header is another piece of validated, but not encrypted data.
         :return: It returns the encrypted content as seen above in bytes.
         """

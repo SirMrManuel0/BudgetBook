@@ -1,4 +1,5 @@
 use chacha20poly1305::aead::OsRng;
+use p256::elliptic_curve::rand_core::RngCore;
 use pyo3::prelude::*;
 use pyo3::exceptions::{PyBaseException, PyException, PyValueError};
 
@@ -10,7 +11,7 @@ use bincode;
 use hkdf::Hkdf;
 use sha2::Sha256;
 use argon2_kdf::{Algorithm, Hasher, Hash};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 use std::str::FromStr;
 use rand_core;
 use rand_core::TryRngCore;
@@ -475,6 +476,18 @@ impl Encryptor {
         
         self.vault.add(vt, secret).map_err(|e| PyException::new_err(format!("There was an error at storage: {:?}", e)))?;
 
+        Ok(())
+    }
+
+    pub fn create_key(&mut self, store: PyRef<PyVaultType>) -> PyResult<()> {
+        let mut secret_vec: Vec<u8> = {
+            let mut buf = vec![0u8; 32];
+            OsRng.fill_bytes(&mut buf);
+            buf
+        };
+        let secret: &[u8] = secret_vec.as_slice();
+        self.add_secret(store, secret, false).map_err(|_| PyException::new_err("There was an error during secret storage (probably already axisting key at the VaultType)"))?;
+        secret_vec.zeroize();
         Ok(())
     }
 }

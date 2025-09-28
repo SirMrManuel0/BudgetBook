@@ -1,6 +1,9 @@
-from budget_book.errors.errors import BaseError, PathError
+from budget_book.errors.errors import BaseError, PathError, DatabaseError, StateError, CorruptionError
 
 __all__ = [
     "BaseError",
-    "PathError"
+    "PathError",
+    "DatabaseError",
+    "StateError",
+    "CorruptionError"
 ]

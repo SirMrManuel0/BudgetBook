@@ -327,3 +327,12 @@ class RustEncryptor:
         """
         self._encryptor.transfer_secret(encryptor._encryptor, vt.inner)
         encryptor.remove_secret(vt)
+
+    def create_key(self, store: VaultType) -> None:
+        """
+        This function creates a 32 byte random key.
+
+        :param store: The VaultType reference where the key should be stored.
+        :return:
+        """
+        self._encryptor.create_key(store.inner)
