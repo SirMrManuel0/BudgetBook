@@ -1,0 +1,3 @@
+docker build -f docker/DockerfilePrebuiltWheel -t budgetbook_pytest . && docker run --rm -it -v ./prebuilt/wheel/:/ext/ budgetbook_pytest && docker rmi budgetbook_pytest
+docker build -f docker/DockerfilePytestNoRust -t budgetbook_pytest . && docker run --rm -it budgetbook_pytest -v ./prebuilt/wheel/:/ext/ && docker rmi budgetbook_pytest
+docker build -f docker/DockerfilePytest -t budgetbook_pytest . && docker run --rm -it budgetbook_pytest && docker rmi budgetbook_pytest

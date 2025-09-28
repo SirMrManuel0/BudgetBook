@@ -6,6 +6,14 @@ WORKDIR /app
 
 # Copy other project files if needed
 COPY ../.. .
+
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        pip install mfence-0.1.1-cp313-cp313-manylinux_2_34_aarch64.whl ; \
+    else \
+        pip install mfence-0.1.1-cp313-cp313-manylinux_2_34_x86_64.whl ; \
+    fi \
+
 RUN pip install prebuilt/wheel/*.whl
 RUN pip install -r requirements.txt
 
