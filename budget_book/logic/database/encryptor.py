@@ -391,7 +391,7 @@ class Encryptor:
                 + cipher
                 + ciphertext
         )
-
+ 
     def decrypt_file(self, en_data: bytes, private_key: Union[str, VaultType]) -> tuple[int, bytes, bytes, bytes]:
         """
         This function decrypts a file which was encrypted with Encryptor.encrypt_file.
