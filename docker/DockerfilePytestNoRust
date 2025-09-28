@@ -12,7 +12,7 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
         pip install prebuilt/wheel/mfence-0.1.1-cp313-cp313-manylinux_2_34_aarch64.whl ; \
     else \
         pip install prebuilt/wheel/mfence-0.1.1-cp313-cp313-manylinux_2_34_x86_64.whl ; \
-    fi \
+    fi
 
 RUN pip install -r requirements.txt
 
