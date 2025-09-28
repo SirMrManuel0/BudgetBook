@@ -15,7 +15,7 @@ from argon2 import PasswordHasher, exceptions
 from argon2.low_level import hash_secret, Type
 from typing import Iterable, Optional, Union, Literal
 
-from pylix.errors import to_test
+from pylix.errors import to_test, TODO
 
 from budget_book import RustEncryptor, VaultType
 from budget_book.errors.errors import StateError
@@ -217,6 +217,7 @@ class Encryptor:
 
         return version
 
+    @to_test
     def add_file(self) -> str:
         if self._key_file is None:
             raise StateError("There is no key file.")
@@ -228,6 +229,15 @@ class Encryptor:
         new_id = max_ + 1
         id_b = Converter.int_to_b64(new_id, False)
         self._key_file[id_b] = { "nonce": secrets.token_bytes(24), "key": VaultType(f"key_file_{id_b}") }
+        self._encryptor.create_key(VaultType(f"key_file_{id_b}"))
+        return id_b
+
+    @TODO
+    def generate_key_file(self):
+        ...
+
+    @TODO
+    def get_key_file(self):
         ...
 
     def is_no_longer_system(self):
