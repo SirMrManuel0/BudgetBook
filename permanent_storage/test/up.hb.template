@@ -1,9 +1,0 @@
-{
-    "id b64": {
-        "username": "b64",
-        "salt_username": "b64",
-        "nonce_username": "b64",
-        "hashed_password": "hash argon2id as b64",
-        "reference": "b64"
-    }
-}
