@@ -1,0 +1,23 @@
+name: Docker Pytest Workflow
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  docker-pytest:
+    runs-on: ubuntu-latest
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Build Docker image
+      run: docker build -f docker/DockerfilePytest -t budgetbook_pytest .
+
+    - name: Run tests inside container
+      run: docker run --rm -it budgetbook_pytest
+
+    - name: Remove Docker image
+      run: docker rmi budgetbook_pytest
+  
