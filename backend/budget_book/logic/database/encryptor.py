@@ -249,30 +249,40 @@ class Encryptor:
         self._key_file = dict()
 
     @to_test
-    @TODO
     def get_key_file(self, password: Union[str, VaultType]) -> bytes:
         password: VaultType = password if isinstance(password, VaultType) else VaultType(password)
-
+        version = 1
         half_encrypted: dict = dict()
         for file_id, values in self._key_file.items():
             salt = secrets.token_bytes(25)
             self._encryptor.derive_key(VaultType("temp_file_key"), password, salt)
-            key_nonce, ciphertext = self._encryptor.encrypt_key_chacha(values["key"], VaultType("_"),
-                                                                   VaultType("temp_file_key"), None, None)
+            key_nonce, ciphertext = self._encryptor.encrypt_key_chacha(
+                values["key"],
+                VaultType("_"),
+                VaultType("temp_file_key"),
+                None,
+                None
+            )
             self._encryptor.remove_secret(VaultType("_"))
             self._encryptor.remove_secret(VaultType("temp_file_key"))
             half_encrypted[file_id] = {
                 "key_nonce": Converter.byte_to_b64(key_nonce),
                 "key_salt": Converter.byte_to_b64(salt),
+                "key": Converter.byte_to_b64(ciphertext),
                 "nonce": Converter.byte_to_b64(values["nonce"]),
                 "hash": values["hash"]
             }
-        # NEXT STEPS:
-        # - encrypt half encrapted with a random key and a random nonce
-        # - encrypt the key and nonce with the user key
-        # - add the nonce used to encrypt the cipher (step above)
-        # - add the version
-        # - return the key_file
+        half_encrypted: str = json.dumps(half_encrypted)
+        half_encrypted: bytes = Converter.utf_to_byte(half_encrypted)
+        file_nonce, ciphertext = self._encryptor.encrypt_chacha(half_encrypted, key=VaultType("temp_file_key"))
+        nonce, cipher = self._encryptor.encrypt_key_and_more(file_nonce, VaultType("temp_file_key"), key=password)
+        self._encryptor.remove_secret(VaultType("temp_file_key"))
+
+        version_bytes = Converter.int_to_bytes(version, False)
+        enc_key_file = Converter.int_to_bytes(len(version_bytes), False, length=3) + version_bytes
+        enc_key_file += nonce + cipher + ciphertext
+
+        return enc_key_file
 
     def is_no_longer_system(self):
         self._is_system = False
@@ -585,3 +595,7 @@ class Encryptor:
         :return:
         """
         self._encryptor.transfer_secret(encryptor, vt)
+
+    def __del__(self):
+        for k in self._encryptor.show_all_keys():
+            self._encryptor.remove_secret(VaultType(k))

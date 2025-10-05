@@ -84,7 +84,13 @@ impl Secret {
             unsafe {
                 if !munlock(self.value.as_mut_ptr(), self.value.capacity()) {
                     let err = io::Error::last_os_error();
-                    panic!("{}", err);
+                    #[cfg(windows)]
+                    {
+                        if let Some(158) = err.raw_os_error() {
+                            // Already unlocked → ignore
+                            return Ok(());
+                        }
+                    }
                     return Err(SecretError::LockFailed);
                 }
             }
