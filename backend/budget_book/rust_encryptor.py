@@ -301,7 +301,7 @@ class RustEncryptor:
         :param from_key: The VaultType reference to the key, which shall be encrypted.
         :param nonce: The nonce can be given as bytes.
         :param aad_opt: The aad can be given as bytes. If it is given, it MUST be given at decryption.
-        :param key: The VaultType reference to the key which shall be encrypted. (If none is given VaultType.chacha_key() is the default)
+        :param key: The VaultType reference to the key which shall encrypt. (If none is given VaultType.chacha_key() is the default)
         :return: It returns in the same order: nonce, ciphertext both as bytes.
         """
         return self._encryptor.encrypt_key_and_more(extra, from_key.inner, nonce, aad_opt, key.inner)

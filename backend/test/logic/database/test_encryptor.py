@@ -1,4 +1,5 @@
 import hashlib
+import secrets
 
 import pytest
 
@@ -121,6 +122,27 @@ def test_en_decrypt_file(data: bytes, aad_opt: bytes, encryption_header: bytes):
         assert encryption_header == de_enc
     if aad_opt is not None:
         assert aad_opt == de_aad
+
+def test_key_file():
+    encryptor: Encryptor = Encryptor(is_system=False, test=True)
+    encryptor.generate_key_file()
+    assumed_file_id: str = Converter.int_to_b64(0, False)
+    id_: str = encryptor.new_entry()
+    assert id_ == assumed_file_id
+    id_: bytes = Converter.b64_to_byte(id_)
+    id_len: bytes = Converter.int_to_bytes(len(id_), False, 5)
+    file: bytes = id_len + id_ + b"This is a file."
+    encryptor.add_file_verification(file)
+    encryptor._encryptor.add_secret(VaultType("password"), secrets.token_bytes(32))
+    key_file = encryptor.get_key_file("password")
+    encryptor.set_key_file("password", key_file)
+    assert len(encryptor._key_file.keys()) == 1 and assumed_file_id in encryptor._key_file.keys()
+    hash_ = hashlib.sha512(file)
+    hashed = hash_.digest()
+    assert encryptor._key_file[assumed_file_id]["hash"] == Converter.byte_to_b64(hashed)
+    encryptor.remove_secret(VaultType("password"))
+
+
 
 # ------------------- Converter ----------------------------------------------------------------------------------------
 # UTF <-> B64
