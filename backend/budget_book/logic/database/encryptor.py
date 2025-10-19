@@ -358,7 +358,7 @@ class Encryptor:
     @TODO
     def encrypt_et(self, data: bytes,  secret_name: str, nonce: Optional[bytes] = None,
                    aad_opt: Optional[bytes] = None, version: int = 1, encryption_header: Optional[bytes] = None) -> bytes:
-        self.encrypt_file(
+        enc_file: bytes = self.encrypt_file(
             data=data,
             private_key=secret_name,
             nonce=nonce,
