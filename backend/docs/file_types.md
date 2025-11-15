@@ -9,7 +9,7 @@ Unless otherwise defined encryption is done with the XChaCha20-Poly1305 algorith
   - [File Structure](#et-file-structure)
 - [.ej](#ej)
   - [File Structure](#ej-file-structure)
-- [.k_hb](#khb)
+- [.khb](#khb)
   - [Table Structure](#khb-table-structure)
   - [File Structure](#khb-file-structure)
 - [.epng](#epng)
@@ -25,13 +25,13 @@ An ET file is an encrypted CSV file. The difference to a normal CSV is the struc
 
 <h3 id="et-file-structure">File Structure</h3>
 
-| Offset    | Field               | Size (bytes) | Description                      |
-|-----------|---------------------|--------------|----------------------------------|
-| 0         | ID length       | 5            | Number of bytes in ID field      |
-| 5         | ID              | m            | ID in bytes                      |
-| 5 + m     | Version length  | 3            | Number of bytes in version field |
-| 5 + 3 + m | Version         | n            | Version string in bytes          |
-| 8 + m + n | Encrypted JSON | ... | The encrypted CSV data           | 
+| Offset    | Field          | Size (bytes) | Description                      |
+|-----------|----------------|--------------|----------------------------------|
+| 0         | ID length      | 5            | Number of bytes in ID field      |
+| 5         | ID             | m            | ID in bytes                      |
+| 5 + m     | Version length | 3            | Number of bytes in version field |
+| 5 + 3 + m | Version        | n            | Version string in bytes          |
+| 8 + m + n | Encrypted CSV  | ... | The encrypted CSV data           | 
 
 
 ## .ej
