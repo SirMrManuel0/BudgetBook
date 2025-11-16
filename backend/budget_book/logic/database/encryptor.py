@@ -1,19 +1,23 @@
 import json
 import secrets
 import base64
+import pandas
 
 import keyring
 import hashlib
 
 from argon2 import PasswordHasher, exceptions
 from typing import Optional, Union, Literal
+from io import BytesIO, TextIOWrapper
 
 from pylix.errors import to_test, TODO
 
-from backend.budget_book import RustEncryptor, VaultType
+from backend.budget_book import RustEncryptor, VaultType, get_file_versions
+from backend.budget_book.errors import CorruptionError
 from backend.budget_book.errors.errors import StateError
 
 FILE_ID_LEN: int = 5
+FILE_VERSION_LEN: int = 3
 
 class Converter:
     @classmethod
@@ -159,7 +163,6 @@ class Encryptor:
             key = Converter.b64_to_byte("yz0Hw1TSUbMYwCohnSwken5AlXFKExjtqK117IjsOI8=")
         self._encryptor.add_secret(VaultType.system_key(), key)
 
-    @to_test
     def set_key_file(self, password: Union[str, VaultType], key_file: bytes) -> int:
         """
         The key file stores all keys for all files (within the scope).
@@ -213,8 +216,7 @@ class Encryptor:
 
         return version
 
-    @to_test
-    def new_entry(self) -> str:
+    def _new_entry(self) -> str:
         if self._key_file is None:
             raise StateError("There is no key file.")
 
@@ -228,10 +230,9 @@ class Encryptor:
         self._encryptor.create_key(VaultType(f"key_file_{id_b}"))
         return id_b
 
-    @to_test
-    def add_file_verification(self, file: bytes):
+    def _add_file_verification(self, file: bytes):
         """
-        !Important! The file must already be the same as defined in encrypt_file (including the file id!)
+        !Important! The file must already be the same as defined in docs/file_types.md (including the file id!)
         :param file:
         :return:
         """
@@ -243,12 +244,21 @@ class Encryptor:
         file_id = Converter.int_to_b64(file_id, False)
         self._key_file[file_id]["hash"] = Converter.byte_to_b64(hashed)
 
-    @to_test
-    @TODO
+    def _verify_file(self, data: bytes) -> bool:
+        hash_ = hashlib.sha512(data)
+        hashed: bytes = hash_.digest()
+        hashed: str = Converter.byte_to_b64(hashed)
+        id_len: bytes = data[:FILE_ID_LEN]
+        id_len: int = Converter.bytes_to_int(id_len, False)
+        id_bytes: bytes = data[FILE_ID_LEN:FILE_ID_LEN+id_len]
+        id_b64: str = Converter.byte_to_b64(id_bytes)
+        correct_hash = self._key_file.get(id_b64, {"hash": -1})["hash"]
+        if correct_hash == -1: raise CorruptionError("File does not exist in for this keyfile.")
+        return hashed == correct_hash
+
     def generate_key_file(self) -> None:
         self._key_file = dict()
 
-    @to_test
     def get_key_file(self, password: Union[str, VaultType]) -> bytes:
         password: VaultType = password if isinstance(password, VaultType) else VaultType(password)
         version = 1
@@ -354,62 +364,6 @@ class Encryptor:
         self._encryptor.remove_secret(VaultType("temp_user_key"))
         return plaintext
 
-    @to_test
-    @TODO
-    def encrypt_et(self, data: bytes,  secret_name: str, nonce: Optional[bytes] = None,
-                   aad_opt: Optional[bytes] = None, version: int = 1, encryption_header: Optional[bytes] = None) -> bytes:
-        enc_file: bytes = self.encrypt_file(
-            data=data,
-            private_key=secret_name,
-            nonce=nonce,
-            aad_opt=aad_opt,
-            version=version,
-            encryption_header=encryption_header
-        )
-
-    def encrypt_system_data(self, data: bytes, nonce: Optional[bytes] = None,
-                            aad_opt: Optional[bytes] = None, version: int = 1, encryption_header: Optional[bytes] = None) -> bytes:
-        """
-        All system datas are encrypted with this function.
-
-        Format:
-
-        Version 1:
-
-        version length (3 bytes) + version (any bytes) + encryption_header length (3 bytes)
-        + encrytion_header (any bytes) + aad_opt length (3 bytes) + aad_opt (any bytes)
-        + public key (32 bytes) + salt (32 bytes) + nonce for the key (24 bytes)
-        + key and nonce for the data (32 bytes + 24 bytes + 16 bytes) + data (any bytes)
-
-        Important: version, encryption_header and aad_opt can each be at max 2^(8 x 3) - 1 in length. (ca. 16,777,000)
-
-        :param encryption_header: An encryption header where useful things might be stored.
-        If it is given during encryption, it MUST be given during decryption.
-        :param version: The version of the encryption protocol.
-        What happens with different versions? Don't ask me.
-        :param data: The data must be given as bytes
-        :param nonce: The nonce must be given if it is not the first time. It must be given as bytes
-        :param aad_opt: The aad is optional and can be given as bytes.
-        If it is given during encryption, it MUST be given during decryption.
-        :return: It returns the encrypted data as a bytes in a certain format as seen above.
-        """
-        if not self._is_system:
-            raise StateError("Only the system can call this method.")
-        return self.encrypt_file(data, VaultType.system_key(), nonce, aad_opt, version, encryption_header)
-
-    def decrypt_system_data(self, en_data: bytes) -> tuple[int, bytes, bytes, bytes]:
-        """
-        This function decrypts system data which was encrypted with Encryptor.encrypt_system_data.
-
-        Important: Directly pass it. This function assume that it can simply use the format from Encryptor.encrypt_system_data.
-
-        :param en_data: The data should be passed as string.
-        :return: It returns in the same order: Version (int), decrypted (bytes), encryption_header (bytes), aad_opt (bytes)
-        """
-        if not self._is_system:
-            raise StateError("Only the system can call this method.")
-        return self.decrypt_file(en_data, VaultType.system_key())
-
     @classmethod
     def validate_hash(cls, data: bytes, hash_: Union[bytes, str], hashing_algo) -> bool:
         """
@@ -459,131 +413,6 @@ class Encryptor:
         """
         self._encryptor.gen_static_private_key(store_in)
 
-    def encrypt_file(self, data: bytes, private_key: Union[str, VaultType], nonce: Optional[bytes] = None,
-                     aad_opt: Optional[bytes] = None, version: int = 1, encryption_header: Optional[bytes] = None) -> bytes:
-        """
-        This method encrypts a file with an ECC private key. You can either pass the name of the secret as a string
-        or pass the corresponding VaultType.
-
-        Version 1n:
-
-        id length (FILE_ID_LEN bytes) + id + version length (3 bytes) + version (any bytes) + encryption_header length (3 bytes)
-        + encryption_header (any bytes) + aad_opt length (3 bytes) + aad_opt (any bytes)
-        + public key (32 bytes) + salt (32 bytes) + nonce for the key (24 bytes)
-        + key and nonce for the data (32 bytes + 24 bytes + 16 bytes) + data (any bytes)
-
-        Version 1:
-
-        version length (3 bytes) + version (any bytes) + encryption_header length (3 bytes)
-        + encryption_header (any bytes) + aad_opt length (3 bytes) + aad_opt (any bytes)
-        + public key (32 bytes) + salt (32 bytes) + nonce for the key (24 bytes)
-        + key and nonce for the data (32 bytes + 24 bytes + 16 bytes) + data (any bytes)
-
-        Important: version, encryption_header and aad_opt can each be at max 2^(8 x 3) - 1 bytes in length. (ca. 16,777,000)
-
-        :param data: This is the data ypu want to encrypt. Passit as bytes.
-        :param private_key: This is either the name of the secret as string or the corresponding VaultType.
-        :param nonce: This is the npnce with which the data will be encrypted. It should be passed as bytes, but is optional.
-        :param aad_opt: The aad_opt is a piece of validated but not encrypted data. It should be passed as bytes, but is optional.
-        :param version: The version ... should currently not be changed, but in theory it should be any uint in the range 0 < n <= ca. 16,777,000.
-        :param encryption_header: The encryption_header is another piece of validated, but not encrypted data.
-        :return: It returns the encrypted content as seen above in bytes.
-        """
-        encryption_header = encryption_header if encryption_header is not None else b""
-        aad_opt = aad_opt if aad_opt is not None else b""
-
-        version: bytes = Converter.int_to_bytes(version, False)
-        version_and_len: bytes = Converter.int_to_bytes(len(version), False, 3)
-        encryption_header_len: bytes = Converter.int_to_bytes(len(encryption_header), False, 3)
-        aad_opt_len: bytes = Converter.int_to_bytes(len(aad_opt), False, 3)
-
-        self._encryptor.remove_secret(VaultType("temp_chacha_ig"))
-
-        nonce_ = secrets.token_bytes(24) if nonce is None else nonce
-        _, ciphertext = self._encryptor.encrypt_chacha(data, nonce_, aad_opt, VaultType("temp_chacha_ig"))
-        new_nonce = secrets.token_bytes(24)
-        salt = secrets.token_bytes(32)
-        self._encryptor.remove_secret(VaultType("temp_eph_key"))
-        self._encryptor.gen_eph_private_key(VaultType("temp_eph_key"))
-        self._encryptor.remove_secret(VaultType("temp_shared_secret"))
-        self._encryptor.find_shared_secret(
-            VaultType("temp_shared_secret"),
-            VaultType(private_key) if isinstance(private_key, str) else private_key,
-            VaultType("temp_eph_key"),
-            False
-        )
-        self._encryptor.remove_secret(VaultType("temp_derived_key"))
-        self._encryptor.derive_key(VaultType("temp_derived_key"), VaultType("temp_shared_secret"), salt)
-        _, cipher = self._encryptor.encrypt_key_and_more(nonce_, VaultType("temp_chacha_ig"), new_nonce,
-                                                         encryption_header, VaultType("temp_derived_key"))
-        pub_key = self._encryptor.get_public_key(VaultType("temp_eph_key"))
-        self._encryptor.remove_secret(VaultType("temp_chacha_ig"))
-        self._encryptor.remove_secret(VaultType("temp_eph_key"))
-        self._encryptor.remove_secret(VaultType("temp_shared_secret"))
-        self._encryptor.remove_secret(VaultType("temp_derived_key"))
-        return (
-                version_and_len + version
-                + encryption_header_len + encryption_header
-                + aad_opt_len + aad_opt
-                + pub_key
-                + salt + new_nonce
-                + cipher
-                + ciphertext
-        )
- 
-    def decrypt_file(self, en_data: bytes, private_key: Union[str, VaultType]) -> tuple[int, bytes, bytes, bytes]:
-        """
-        This function decrypts a file which was encrypted with Encryptor.encrypt_file.
-
-        Important: Directly pass it. This function assume that it can simply use the format from Encryptor.encrypt_file.
-
-        :param en_data: The data should be passed as string.
-        :param private_key: This is either the name of the ECC private key as string or the corresponding VaultType.
-        :return: It returns in the same order: Version (int), decrypted (bytes), encryption_header (bytes), aad_opt (bytes)
-        """
-        version_len: int = Converter.bytes_to_int(en_data[:3], False)
-        version: int = Converter.bytes_to_int(en_data[3: 3 + version_len], False)
-        current: int = 3 + version_len
-        enc_head_len: int = Converter.bytes_to_int(en_data[current: current + 3], False)
-        current += 3
-        encryption_header: bytes = en_data[current: current + enc_head_len]
-        current += enc_head_len
-        aad_opt_len: int = Converter.bytes_to_int(en_data[current: current + 3], False)
-        current += 3
-        aad_opt: bytes = en_data[current: current + aad_opt_len]
-        current += aad_opt_len
-        pub_key: bytes = en_data[current: current + 32]
-        current += 32
-        salt: bytes = en_data[current: current + 32]
-        current += 32
-        key_nonce: bytes = en_data[current: current + 24]
-        current += 24
-        key_and_nonce: bytes = en_data[current: current + 32 + 24 + 16]
-        current += 32 + 24 + 16
-        ciphertext: bytes = en_data[current:]
-
-        self._encryptor.add_secret(VaultType("temp_pub_key"), pub_key, True)
-        self._encryptor.remove_secret(VaultType("temp_shared_secret"))
-        self._encryptor.remove_secret(VaultType("temp_derived_key"))
-        self._encryptor.remove_secret(VaultType("temp_main_key"))
-        self._encryptor.find_shared_secret(
-            VaultType("temp_shared_secret"),
-            private_key if isinstance(private_key, VaultType) else VaultType(private_key),
-            VaultType("temp_pub_key"),
-            True
-        )
-        self._encryptor.derive_key(VaultType("temp_derived_key"), VaultType("temp_shared_secret"), salt)
-        nonce = self._encryptor.decrypt_into_key(key_and_nonce, key_nonce, VaultType("temp_main_key"),
-                                                 VaultType("temp_derived_key"), encryption_header)
-        plain = self._encryptor.decrypt_chacha(ciphertext, nonce, VaultType("temp_main_key"), aad_opt)
-
-        self._encryptor.remove_secret(VaultType("temp_pub_key"))
-        self._encryptor.remove_secret(VaultType("temp_shared_secret"))
-        self._encryptor.remove_secret(VaultType("temp_derived_key"))
-        self._encryptor.remove_secret(VaultType("temp_main_key"))
-
-        return version, plain, encryption_header, aad_opt
-
     def transfer_secret(self, encryptor: RustEncryptor, vt: VaultType):
         """
         This function transfers a secret from one RustEncryptor to another.
@@ -595,6 +424,60 @@ class Encryptor:
         :return:
         """
         self._encryptor.transfer_secret(encryptor, vt)
+
+    def _encrypt_et_ej_wrapper(self, data: bytes) -> bytes:
+        id_: str = self._new_entry()
+        key_vt: VaultType = self._key_file[id_]["key"]
+        key_nonce: bytes = self._key_file[id_]["nonce"]
+        version: str = get_file_versions()
+        id_bytes: bytes = Converter.b64_to_byte(id_)
+        id_len: bytes = Converter.int_to_bytes(len(id_bytes), False, FILE_ID_LEN)
+        version_bytes: bytes = Converter.utf_to_byte(version)
+        version_len: bytes = Converter.int_to_bytes(len(version_bytes), False, FILE_VERSION_LEN)
+        _, ciphertext = self._encryptor.encrypt_chacha(data, key_nonce, None, key_vt)
+        file: bytes = id_len + id_bytes + version_len + version_bytes + ciphertext
+        self._add_file_verification(file)
+        return file
+
+    def encrypt_et(self, data: pandas.DataFrame) -> bytes:
+        buffer = BytesIO()
+        with TextIOWrapper(buffer, encoding='utf-8', write_through=True) as text_buf:
+            data.to_csv(text_buf, index=False)
+            text_buf.seek(0)
+            csv_bytes = Converter.utf_to_byte(text_buf.read())
+        return self._encrypt_et_ej_wrapper(csv_bytes)
+
+    def encrypt_ej(self, data: dict) -> bytes:
+        dumped: str = json.dumps(data)
+        data_bytes: bytes = Converter.utf_to_byte(dumped)
+        return self._encrypt_et_ej_wrapper(data_bytes)
+
+    def _decrypt_et_ej_wrapper(self, data: bytes) -> bytes:
+        if not self._verify_file(data):
+            raise CorruptionError("This file has been corrupted.")
+        id_len: bytes = data[:FILE_ID_LEN]
+        id_len: int = Converter.bytes_to_int(id_len, False)
+        id_bytes: bytes = data[FILE_ID_LEN:FILE_ID_LEN+id_len]
+        current: int = FILE_ID_LEN + id_len
+        version_len: bytes = data[current:current+FILE_VERSION_LEN]
+        version_len: int = Converter.bytes_to_int(version_len, False)
+        current += FILE_VERSION_LEN
+        version_bytes: bytes = data[current:current+version_len]
+        current += version_len
+        file: bytes = data[current:]
+        version: str = Converter.byte_to_utf(version_bytes)
+        id_b64: str = Converter.byte_to_b64(id_bytes)
+        key_vt: VaultType = self._key_file[id_b64]["key"]
+        key_nonce: bytes = self._key_file[id_b64]["nonce"]
+        return self._encryptor.decrypt_chacha(file, key_nonce, key_vt, None)
+
+    def decrypt_et(self, data: bytes) -> pandas.DataFrame:
+        file = self._decrypt_et_ej_wrapper(data)
+        return pandas.read_csv(BytesIO(file), encoding="utf-8")
+
+    def decrypt_ej(self, data: bytes) -> dict:
+        file = self._decrypt_et_ej_wrapper(data)
+        return json.loads(file)
 
     def __del__(self):
         for k in self._encryptor.show_all_keys():

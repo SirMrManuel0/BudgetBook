@@ -1,7 +1,10 @@
 import hashlib
+import json
 import secrets
-
+import pandas
 import pytest
+
+from io import StringIO
 
 from backend.budget_book import VaultType
 from backend.budget_book.logic.database.encryptor import Encryptor, Converter, HashingAlgorithm
@@ -59,24 +62,6 @@ def test_decrypt_username(en_username, nonce_, salt_, expected):
     plain = encryptor.decrypt_username(en_username, salt_, nonce_)
     assert plain == expected
 
-@pytest.mark.parametrize(
-    "data,nonce,aad,enc_header",
-    [
-        (b"Alles ist super", "nFnaoZaf2M3MGA5Dx0g1K9f1M3qOFndN", b"This is an informatial header", b"Some sort of header ig"),
-        (b"Wo ist meine Cola?", "jqDO/Di4zq2ogvX6rZJKt2Z/+89AXIgF", b"Headers can be important", b"a header can only save non-secrets"),
-        ("Meine Chicken Nuggets verbrennen 🔥🔥🔥".encode(), "HmqKb9eq4jFAYybFywrW+2lmUA6P96eI", b"ups, forgot the aad", b"a header has mostly genereic info"),
-        (b"Wo... wo bin ich?", "ZIuaPfgsMAIl5IN46ynWbj0TP+qNKPpl", b"hmmm, this could be useful", b"i am not wise enough for another")
-    ]
-)
-def test_de_encrypt_system_data(data, nonce, aad, enc_header):
-    encryptor = Encryptor(True, test=True)
-    nonce = Converter.b64_to_byte(nonce)
-    en_data = encryptor.encrypt_system_data(data, nonce, aad, encryption_header=enc_header)
-    _, plain, encryption_header, aad_ = encryptor.decrypt_system_data(en_data)
-    assert plain == data
-    assert encryption_header == enc_header
-    assert aad == aad_
-
 def test_validate_hash():
     message = b"my pants are on fire"
     hash_ = hashlib.sha512()
@@ -99,40 +84,16 @@ def test_recreate_hash(pw, salt, expected):
     e.add_secret(VaultType("cool"), Converter.utf_to_byte(pw))
     assert e.recreate_hash("cool", Converter.b64_to_byte(salt)) == expected
 
-@pytest.mark.parametrize(
-    "data,aad_opt,encryption_header",
-    [
-        (b"some data ig", b"whatever an aad is", b"an ... encryptin header? whats that lol"),
-        (b"some data ig", b"whatever an aad is", None),
-        (b"some data ig", None, b"an ... encryptin header? whats that lol"),
-        (b"some data ig", None, None),
-        (Converter.b64_to_byte("gUxW+lp9rH9lEAOWg5/qEdhIcy6lF0j9s28N6xE7JNwm+Ro6dwi9nd6magB0OubtqrkGkMjq8wu2MrR0ohprkriSBMt7LO17b9ibYPqM26NAGgsfYCEufNL3XTmP43bq9zLONZ8dAs2DcjJTIkrtmgrq+Ffk1p2WF7fezdOKownsQ+CGURQT1EQ3mqUt/4LEM9PRsYrMhdJCgGbikhODrz+pYbKrpOuDG2J/r4RAPgkcDw20copvm6/1rWSXJxXkid79Or1yJZNY6pQzdcYaHeFzFi2YBiFPDkEU9qjD09G9dVNPffFva5eXUC3Jhwp7OZXf9qpyDVjHpNQ+EiOuSU+QxsK/pYwaS0svTnipXzFjQS4S464Q+xf4If8jP9Cnr8MUtm146Yg0VqhkIYHS6bb+ACYMJsIUivcBN/wponMXfJRrFmEOIYyfz9nMmjFixg9Q+MWhhAbkPcho7kYG+p5FQHLD7LBq4I6nAKzaqPbci6mGLkbL30QHFzBEi5R5Dt1p/nkO3fOUjDbi/ROxuYjRQ6aMe3Lbvr6YutHH3RdAcGTxcG4Wod8ONpmd7y8HyK+3pUSQN/DVnr7nO5+OvYK5BUr8z45NfxbwZVnoDi8BAFSc4xHniVjLWUtZjjv6D2xzGh6luAmS0tC64DQ2rm5AQpdyHhMDf2cRc+FvgiY="),
-         None, None),
-        (Converter.b64_to_byte("gUxW+lp9rH9lEAOWg5/qEdhIcy6lF0j9s28N6xE7JNwm+Ro6dwi9nd6magB0OubtqrkGkMjq8wu2MrR0ohprkriSBMt7LO17b9ibYPqM26NAGgsfYCEufNL3XTmP43bq9zLONZ8dAs2DcjJTIkrtmgrq+Ffk1p2WF7fezdOKownsQ+CGURQT1EQ3mqUt/4LEM9PRsYrMhdJCgGbikhODrz+pYbKrpOuDG2J/r4RAPgkcDw20copvm6/1rWSXJxXkid79Or1yJZNY6pQzdcYaHeFzFi2YBiFPDkEU9qjD09G9dVNPffFva5eXUC3Jhwp7OZXf9qpyDVjHpNQ+EiOuSU+QxsK/pYwaS0svTnipXzFjQS4S464Q+xf4If8jP9Cnr8MUtm146Yg0VqhkIYHS6bb+ACYMJsIUivcBN/wponMXfJRrFmEOIYyfz9nMmjFixg9Q+MWhhAbkPcho7kYG+p5FQHLD7LBq4I6nAKzaqPbci6mGLkbL30QHFzBEi5R5Dt1p/nkO3fOUjDbi/ROxuYjRQ6aMe3Lbvr6YutHH3RdAcGTxcG4Wod8ONpmd7y8HyK+3pUSQN/DVnr7nO5+OvYK5BUr8z45NfxbwZVnoDi8BAFSc4xHniVjLWUtZjjv6D2xzGh6luAmS0tC64DQ2rm5AQpdyHhMDf2cRc+FvgiY="),
-         b"Some extreeeemly", b"loooong data"),
-    ]
-)
-def test_en_decrypt_file(data: bytes, aad_opt: bytes, encryption_header: bytes):
-    encryptor = Encryptor(True, test=True)
-    encryptor.gen_ecc_private_key(VaultType("private"))
-    en = encryptor.encrypt_file(data, VaultType("private"), aad_opt=aad_opt, encryption_header=encryption_header)
-    _, de, de_enc, de_aad = encryptor.decrypt_file(en, VaultType("private"))
-    assert data == de
-    if encryption_header is not None:
-        assert encryption_header == de_enc
-    if aad_opt is not None:
-        assert aad_opt == de_aad
-
 def test_key_file():
     encryptor: Encryptor = Encryptor(is_system=False, test=True)
     encryptor.generate_key_file()
     assumed_file_id: str = Converter.int_to_b64(0, False)
-    id_: str = encryptor.new_entry()
+    id_: str = encryptor._new_entry()
     assert id_ == assumed_file_id
     id_: bytes = Converter.b64_to_byte(id_)
     id_len: bytes = Converter.int_to_bytes(len(id_), False, 5)
     file: bytes = id_len + id_ + b"This is a file."
-    encryptor.add_file_verification(file)
+    encryptor._add_file_verification(file)
     encryptor._encryptor.add_secret(VaultType("password"), secrets.token_bytes(32))
     key_file = encryptor.get_key_file("password")
     encryptor.set_key_file("password", key_file)
@@ -142,7 +103,51 @@ def test_key_file():
     assert encryptor._key_file[assumed_file_id]["hash"] == Converter.byte_to_b64(hashed)
     encryptor.remove_secret(VaultType("password"))
 
+@pytest.mark.parametrize(
+    "csv",
+    [
+        "id,value\n1,10\n2,20\n3,30",
+        "name,age,active\nAlice,30,True\nBob,25,False\nCharlie,40,True",
+        "date,temperature\n2024-01-01,23.5\n2024-01-02,21.8\n2024-01-03,19.4",
+        "id,description\n1,\"Hello, world\"\n2,\"Value, with comma\"\n3,\"Another, test\"",
+        "id,a,b,c\n1,10,,30\n2,,20,\n3,5,6,7",
+        "flag,count\nTrue,5\nFalse,10\nTrue,0",
+        "user_id,username,email\n1,jdoe,jdoe@example.com\n2,asmith,asmith@example.com\n3,mbrown,mbrown@example.com",
+        "id,text\n1,\"Emoji 😀\"\n2,\"Symbols #$%^&*\"\n3,\"Unicode ✓\"",
+        "id,notes\n1,\"Lorem ipsum dolor sit amet, consectetur adipiscing elit.\"\n2,\"Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\"\n3,\"Ut enim ad minim veniam.\"",
+        "a,b,c,d\n10,20,30,40\n5,15,25,35\n7,14,21,28"
+    ]
+)
+def test_en_decrypt_et(csv):
+    encryptor = Encryptor(test=True, is_system=False)
+    encryptor.generate_key_file()
+    df = pandas.read_csv(StringIO(csv))
+    encrypted = encryptor.encrypt_et(df)
+    decrypted = encryptor.decrypt_et(encrypted)
+    assert df.equals(decrypted)
 
+@pytest.mark.parametrize(
+    "js",
+    [
+        "{\"a\": 1, \"b\": 2}",
+        "{\"name\": \"Alice\", \"age\": 30}",
+        "{\"x\": 10, \"y\": 20, \"z\": 30}",
+        "{\"id\": 1, \"tags\": [\"red\", \"blue\"]}",
+        "{\"active\": true, \"count\": 5}",
+        "{\"pi\": 3.14, \"e\": 2.718}",
+        "{\"user\": {\"id\": 1, \"name\": \"Bob\"}}",
+        "{\"items\": [1, 2, 3, 4]}",
+        "{\"status\": \"ok\", \"error\": null}",
+        "{\"key\": \"value\", \"numbers\": [10, 20, 30]}"
+    ]
+)
+def test_en_decrypt_ej(js):
+    encryptor = Encryptor(test=True, is_system=False)
+    encryptor.generate_key_file()
+    js = json.loads(js)
+    encrypted = encryptor.encrypt_ej(js)
+    decrypted = encryptor.decrypt_ej(encrypted)
+    assert decrypted == js
 
 # ------------------- Converter ----------------------------------------------------------------------------------------
 # UTF <-> B64
