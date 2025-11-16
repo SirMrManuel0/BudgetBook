@@ -49,7 +49,7 @@ jobs:
 
         echo "=== Projekt mit Maturin bauen ==="
         cd backend
-        .venv/bin/python -m maturin develop --release
+        ../.venv/bin/python -m maturin develop --release
     - name: Test with pytest
       run: |
         .venv/bin/python -m pytest
