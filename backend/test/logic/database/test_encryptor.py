@@ -7,7 +7,7 @@ import pytest
 from io import StringIO
 
 from backend.budget_book import VaultType
-from backend.budget_book.logic.database.encryptor import Encryptor, Converter, HashingAlgorithm
+from backend.budget_book.logic.encryptor import Encryptor, converter, HashingAlgorithm
 
 @pytest.mark.parametrize(
     "username,userkey_name,salt_,expected",

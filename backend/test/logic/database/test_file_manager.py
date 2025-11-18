@@ -1,6 +1,6 @@
 import hashlib
 
-from backend.budget_book.logic.database.encryptor import Converter
+from backend.budget_book.logic.encryptor import converter
 from backend.budget_book.logic.database.file_manager import FileManager
 
 

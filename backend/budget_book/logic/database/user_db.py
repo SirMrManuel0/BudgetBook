@@ -1,5 +1,5 @@
  from backend.budget_book.rust_encryptor import RustEncryptor, VaultType
-from backend.budget_book.logic.database.encryptor import Encryptor
+from backend.budget_book.logic.encryptor import Encryptor
  from backend.budget_book.logic.database.file_manager import FileManager
 
 
