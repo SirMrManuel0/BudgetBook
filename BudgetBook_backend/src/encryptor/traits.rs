@@ -1,16 +1,25 @@
-pub trait Secret {
+use crate::traits::Zeroize;
+use crate::encryptor::errors::EncryptorError;
+
+pub trait Secret: Zeroize {
     fn new(secret: Vec<u8>);
-    fn expose() -> Vec<u8>;
-    fn compare(second: Secret) -> bool; // Constant time comparison
-    fn zeroize();
+    fn expose(&self) -> &[u8];
+    fn compare(second: &impl Secret) -> bool; // Constant time comparison
 }
 
+pub struct EncryptedData {
+    pub ciphertext: Vec<u8>,
+    pub nonce: Vec<u8>,
+    pub key: Vec<u8>,
+}
+
+
 pub trait Encrypt {
-    fn encrypt(key: impl Secret, clear: Vec<u8>, nonce: Option<Vec<u8>>) -> Vec<Vec<u8>, Vec<u8>>;
+    fn encrypt(clear: &[u8], key: Option<&[u8]>, nonce: Option<&[u8]>) -> Result<EncryptedData, EncryptorError>;
 }
 
 pub trait Decrypt {
-    fn decrypt(key: impl Secret, encrypted: Vec<u8>, nonce: Vec<u8>) -> Vec<u8>;
+    fn decrypt(encrypted: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, EncryptorError>;
 }
 
 pub trait EnDecrypt: Encrypt + Decrypt {}
