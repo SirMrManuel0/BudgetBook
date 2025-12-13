@@ -1,5 +1,5 @@
 [package]
-name = "BudgetBook_backend"
+name = "mo_backend"
 version = "0.1.0"
 edition = "2024"
 

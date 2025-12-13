@@ -15,11 +15,11 @@ pub struct EncryptedData {
 
 
 pub trait Encrypt {
-    fn encrypt(clear: &[u8], key: Option<&[u8]>, nonce: Option<&[u8]>) -> Result<EncryptedData, EncryptorError>;
+    fn encrypt(plaintext: &[u8], key: Option<&[u8]>, nonce: Option<&[u8]>) -> Result<EncryptedData, EncryptorError>;
 }
 
 pub trait Decrypt {
-    fn decrypt(encrypted: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, EncryptorError>;
+    fn decrypt(ciphertext: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, EncryptorError>;
 }
 
 pub trait EnDecrypt: Encrypt + Decrypt {}
