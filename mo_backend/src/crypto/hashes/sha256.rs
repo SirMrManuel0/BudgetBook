@@ -18,6 +18,7 @@ impl Hash for Sha256 {
 
 impl KeyDerivate32 for Sha256 {
     fn derive32 (arguments: &DeriveData) -> Result<DerivedData, HashError> {
+        let mut hashes: u8 = if arguments.hashes > 0 {arguments.hashes} else {1 as u8};
         match arguments.salt.clone() {
             Some(struct_salt) => {
                 let length: usize = if struct_salt.length <= 0 {1} else {struct_salt.length};
@@ -28,12 +29,25 @@ impl KeyDerivate32 for Sha256 {
                 let mut to_derive = vec!();
                 to_derive.extend_from_slice(arguments.secret.as_ref());
                 to_derive.extend(salt.clone());
-                let hashed: Vec<u8> = Sha256::default_hash(&to_derive)?;
+                let mut hashed: Vec<u8> = to_derive;
+                if hashes > 1 {
+                    while hashes > 0 {
+                        hashed = Sha256::default_hash(hashed.as_slice())?;
+                        hashes = hashes - 1;
+                    }
+                }
                 return Ok(DerivedData { key: hashed, salt: Some(salt) });
             },
             None => {
+                let mut hashed: Vec<u8> = arguments.secret.clone();
+                if hashes > 1 {
+                    while hashes > 0 {
+                        hashed = Sha256::default_hash(hashed.as_slice())?;
+                        hashes = hashes - 1;
+                    }
+                }
                 return Ok(DerivedData{
-                    key: Sha256::default_hash(&arguments.secret)?,
+                    key: hashed,
                     salt: None,
                 });
             },
