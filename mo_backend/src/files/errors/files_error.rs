@@ -1,5 +1,11 @@
 #[derive(Debug)]
-pub enum FilesError {
+pub struct FilesError{
+    pub kind: FilesErrorKind,
+    pub msg: &'static str,
+}
+
+#[derive(Debug)]
+pub enum FilesErrorKind {
     FileDoesNotExist,
     FileAlreadyExists,
     CouldNotWrite,
@@ -7,4 +13,9 @@ pub enum FilesError {
     FailedToWrite,
     BufferCouldNotFlush,
     FailedToOpen,
+    FileNotFound,
+    PathIsADirectory,
+    PermissionDenied,
+    Unkown,
+    Interrupted,
 }

@@ -2,14 +2,15 @@ use std::fs;
 
 use crate::files::traits::write::{FormatWriter, Writer};
 use crate::files::traits::formatter::{FileFormatter, SerializableExtra};
-use crate::files::errors::files_error::FilesError;
+use crate::files::errors::files_error::{FilesError, FilesErrorKind};
 
 
 pub struct DefaultWriter;
 
 impl Writer for DefaultWriter {
     fn write(path: &str, content: &[u8]) -> Result<(), FilesError> {
-        fs::write(path, content).map_err(|_| FilesError::CouldNotWrite)?;
+        fs::write(path, content)
+        .map_err(|_| FilesError {kind: FilesErrorKind::CouldNotWrite, msg: "There was an error in writing this file."})?;
         Ok(())
     }
 }
