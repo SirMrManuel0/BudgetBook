@@ -19,7 +19,6 @@ jobs:
           - beta
           - nightly
     steps:
-      - name: Test Base
       - uses: actions/checkout@v4
       - run: |
           rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
@@ -38,7 +37,6 @@ jobs:
         apps:
           - agent_mo
     steps:
-      - name: Test App ${{ matrix.apps }}
       - uses: actions/checkout@v4
       - run: |
           rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
