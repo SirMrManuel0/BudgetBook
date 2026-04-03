@@ -19,11 +19,12 @@ jobs:
           - beta
           - nightly
     steps:
-      - uses: actions/checkout@v4
-      - working-directory: ./base_backend
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo build --verbose
-      - run: cargo test --verbose
+      - name: Test Base
+        uses: actions/checkout@v4
+        working-directory: ./base_backend
+        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+        run: cargo build --verbose
+        run: cargo test --verbose
   build_and_test_apps:
     name: App Test
     runs-on: ubuntu-latest
@@ -36,9 +37,10 @@ jobs:
         apps:
           - agent_mo
     steps:
-      - uses: actions/checkout@v4
-      - working-directory: ./apps/${{ matrix.apps }}
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cd apps/${{ matrix.apps }}/backend
-      - run: cargo build --verbose
-      - run: cargo test --verbose  
+      - name: Test App ${{ matrix.apps }}
+        uses: actions/checkout@v4
+        working-directory: ./apps/${{ matrix.apps }}
+        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+        run: cd apps/${{ matrix.apps }}/backend
+        run: cargo build --verbose
+        run: cargo test --verbose  
