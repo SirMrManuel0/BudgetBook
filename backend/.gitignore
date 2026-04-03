@@ -1,7 +1,0 @@
-permanent_storage/deploy/
-backups/
-*/__pycache__/*
-target/
-Cargo.lock
-cert_priv/
-cert/

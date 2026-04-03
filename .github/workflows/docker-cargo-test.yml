@@ -1,0 +1,45 @@
+name: Docker Cargo Test Workflow
+
+on:
+  push:
+    branches:
+      - '**'
+
+env: 
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_and_test_base:
+    name: Base Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+          - beta
+          - nightly
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+          cd base_backend
+          cargo build --verbose
+          cargo test --verbose
+  build_and_test_apps:
+    name: App Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+          - beta
+          - nightly
+        apps:
+          - agent_mo
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+          cd apps/${{ matrix.apps }}/backend
+          cargo build --verbose
+          cargo test --verbose  
